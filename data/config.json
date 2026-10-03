@@ -1,0 +1,25 @@
+{
+  "servos": [
+    {
+      "name": "Servo 1",
+      "address": "0x40",
+      "channel": 0,
+      "minPulseMicroseconds": 500,
+      "maxPulseMicroseconds": 2500
+    },
+    {
+      "name": "Servo 2",
+      "address": "0x40",
+      "channel": 1,
+      "minPulseMicroseconds": 500,
+      "maxPulseMicroseconds": 2500
+    },
+    {
+      "name": "Servo 3",
+      "address": "0x40",
+      "channel": 2,
+      "minPulseMicroseconds": 500,
+      "maxPulseMicroseconds": 2500
+    }
+  ]
+}

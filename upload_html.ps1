@@ -1,0 +1,1 @@
+& 'C:\Users\onedr\.platformio\penv\Scripts\platformio.exe' run -e nodemcuv2_ota -t uploadfs --upload-port lamp-controller.local

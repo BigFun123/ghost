@@ -1,0 +1,14 @@
+chip: ESP8266EX
+
+the controller is an esp8266 with 0.96"TT oled modules attached.  v2.1.2
+D5=GPIO12=SCL
+D6=GPIO14=SDA
+
+create a hello world esp app that updates over the air
+
+pca9685 12 channel servo controller (SCL SDA)
+
+display: 2.44 cm Display 
+SSD1306 driver via I2C pins D5/SCL and D6/SDA)
+
+USB TYPE-C

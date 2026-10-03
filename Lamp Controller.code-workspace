@@ -1,0 +1,15 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"name": "Lamp Controller",
+			"path": "Lamp Controller"
+		}
+	],
+	"settings": {
+		"powershell.cwd": "Lamp Controller",
+		"liveServer.settings.multiRootWorkspaceName": "Lamp Controller"
+	}
+}

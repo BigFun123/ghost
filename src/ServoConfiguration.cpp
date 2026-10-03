@@ -1,0 +1,97 @@
+#include "ServoConfiguration.h"
+
+#include "AppLog.h"
+
+#include <ArduinoJson.h>
+#include <LittleFS.h>
+#include <stdlib.h>
+#include <string.h>
+
+namespace {
+bool parseAddress(const String& text, uint8_t& address) {
+  char* end = nullptr;
+  const unsigned long value = strtoul(text.c_str(), &end, 0);
+  if (text.length() == 0 || end == text.c_str() || *end != '\0' ||
+      value < 0x40 || value > 0x77) {
+    return false;
+  }
+  address = static_cast<uint8_t>(value);
+  return true;
+}
+
+bool hasDuplicateChannel(const ServoConfiguration* configurations,
+                         uint8_t count,
+                         const ServoConfiguration& candidate) {
+  for (uint8_t index = 0; index < count; ++index) {
+    if (configurations[index].address == candidate.address &&
+        configurations[index].channel == candidate.channel) {
+      return true;
+    }
+  }
+  return false;
+}
+}  // namespace
+
+bool loadServoConfigurations(ServoConfiguration* configurations,
+                             uint8_t capacity,
+                             uint8_t& configurationCount) {
+  configurationCount = 0;
+  File file = LittleFS.open("/config.json", "r");
+  if (!file) {
+    AppLog::println("Servo configuration missing: /config.json.");
+    return false;
+  }
+
+  JsonDocument document;
+  const DeserializationError error = deserializeJson(document, file);
+  file.close();
+  if (error) {
+    AppLog::printf("Servo configuration JSON error: %s.\n", error.c_str());
+    return false;
+  }
+
+  const JsonArrayConst servos = document["servos"].as<JsonArrayConst>();
+  if (servos.isNull() || servos.size() == 0 ||
+      servos.size() > kMaximumServoCount || servos.size() > capacity) {
+    AppLog::printf("Servo configuration must contain 1-%u entries.\n",
+                   kMaximumServoCount);
+    return false;
+  }
+
+  for (JsonObjectConst entry : servos) {
+    ServoConfiguration candidate;
+    const char* name = entry["name"] | "";
+    const char* addressText = entry["address"] | "";
+    const int channel = entry["channel"] | -1;
+    const int minimumPulse = entry["minPulseMicroseconds"] | -1;
+    const int maximumPulse = entry["maxPulseMicroseconds"] | -1;
+
+    if (name[0] == '\0' || strlen(name) > 31 ||
+        !parseAddress(String(addressText), candidate.address) ||
+        channel < 0 || channel > 15 ||
+        minimumPulse < 500 || maximumPulse > 2500 ||
+        minimumPulse >= maximumPulse) {
+      AppLog::printf("Invalid servo configuration at entry %u.\n",
+                     configurationCount + 1);
+      configurationCount = 0;
+      return false;
+    }
+
+    candidate.name = name;
+    candidate.channel = static_cast<uint8_t>(channel);
+    candidate.minimumPulseMicroseconds =
+        static_cast<uint16_t>(minimumPulse);
+    candidate.maximumPulseMicroseconds =
+        static_cast<uint16_t>(maximumPulse);
+    if (hasDuplicateChannel(configurations, configurationCount, candidate)) {
+      AppLog::printf("Duplicate PCA9685 output at entry %u.\n",
+                     configurationCount + 1);
+      configurationCount = 0;
+      return false;
+    }
+    configurations[configurationCount++] = candidate;
+  }
+
+  AppLog::printf("Loaded %u servo configuration(s).\n", configurationCount);
+  return true;
+}

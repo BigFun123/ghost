@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>GOBOTIC Robot Controller</title>
+  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <h1>GOBOTIC Robot Controller</h1>
+  <div id="connection">Loading device status…</div>
+  <nav class="tabs" role="tablist" aria-label="Controller pages">
+    <button class="tab" id="overviewTab" role="tab" aria-selected="true" aria-controls="overviewPanel">Overview</button>
+    <button class="tab" id="mixerTab" role="tab" aria-selected="false" aria-controls="mixerPanel" tabindex="-1">Servo Mixer</button>
+  </nav>
+  <main>
+    <div class="panel" id="overviewPanel" role="tabpanel" aria-labelledby="overviewTab">
+      <div class="grid">
+        <section><h2>Device</h2><dl>
+          <dt>Chip ID</dt><dd id="chipId">—</dd>
+          <dt>CPU</dt><dd id="cpu">—</dd>
+          <dt>SDK</dt><dd id="sdk">—</dd>
+          <dt>Arduino core</dt><dd id="core">—</dd>
+          <dt>Reset reason</dt><dd id="resetReason">—</dd>
+          <dt>Uptime</dt><dd id="uptime">—</dd>
+          <dt>Free heap</dt><dd id="heap">—</dd>
+          <dt>Largest free block</dt><dd id="largestBlock">—</dd>
+          <dt>Heap fragmentation</dt><dd id="fragmentation">—</dd>
+          <dt>Flash size</dt><dd id="flashSize">—</dd>
+          <dt>Sketch size</dt><dd id="sketchSize">—</dd>
+          <dt>Free OTA space</dt><dd id="otaSpace">—</dd>
+        </dl></section>
+        <section><h2>Wi-Fi</h2><dl>
+          <dt>Network</dt><dd id="ssid">—</dd>
+          <dt>IP address</dt><dd id="ip">—</dd>
+          <dt>Signal</dt><dd id="rssi">—</dd>
+          <dt>MAC</dt><dd id="mac">—</dd>
+        </dl></section>
+      </div>
+      <section><h2>Serial output</h2>
+        <textarea id="serialLog" aria-label="Recent serial output" readonly></textarea>
+      </section>
+    </div>
+    <div class="panel" id="mixerPanel" role="tabpanel" aria-labelledby="mixerTab" hidden>      
+      <div class="mixer">
+        <section class="channel-strip master-strip">
+          <span class="channel-number">MASTER</span><h2>Master Output</h2>
+          <div class="meter" aria-hidden="true"></div>
+          <div class="channel-readout master-readout" id="macroStatus">Ready</div>
+          <div class="macro-description">Sweep configured servos individually or together from 0° to 180° and back, or center active servos at 90°.</div>
+          <div class="master-actions">
+            <button class="mix-button sweep-button" id="sweepButton" type="button">SWEEP EACH</button>
+            <button class="mix-button sweep-all-button" id="sweepAllButton" type="button">SWEEP ALL</button>
+            <button class="mix-button center-button" id="centerButton" type="button">CENTER ACTIVE</button>
+            <button class="mix-button stop-button" id="stopSweepButton" type="button" disabled>STOP</button>
+          </div>
+          <div id="macroError" role="alert" class="servo-error"></div>
+        </section>
+      </div>
+    </div>
+  </main>
+  <p class="note" id="updated"></p>
+  <script src="/app.js" defer></script>
+  <script src="./app.js" defer></script>
+</body>
+</html>
