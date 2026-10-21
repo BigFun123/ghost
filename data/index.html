@@ -1,5 +1,6 @@
 <!doctype html>
 <html lang="en">
+
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -8,61 +9,209 @@
   <link rel="stylesheet" href="/style.css">
   <link rel="stylesheet" href="./style.css">
 </head>
+
 <body>
-  <h1>GOBOTIC Robot Controller</h1>
-  <div id="connection">Loading device status…</div>
+  <div id="status" role="alert" aria-live="polite">
+    <h1>GOBOTIC Robot Controller</h1>
+    <div class="status-actions">
+      <button id="previewToggle" type="button" aria-expanded="true" aria-controls="previewPanel">Deactivate 3D view</button>
+      <button id="rebootButton" type="button">Reboot</button>
+    </div>
+    <div id="connection">Loading device status…</div>
+  </div>
   <nav class="tabs" role="tablist" aria-label="Controller pages">
-    <button class="tab" id="overviewTab" role="tab" aria-selected="true" aria-controls="overviewPanel">Overview</button>
-    <button class="tab" id="mixerTab" role="tab" aria-selected="false" aria-controls="mixerPanel" tabindex="-1">Servo Mixer</button>
+    <button class="tab" id="mixerTab" role="tab" aria-selected="true" aria-controls="mixerPanel" tabindex="0">Servo
+      Mixer</button>
+    <button class="tab" id="overviewTab" role="tab" aria-selected="false" aria-controls="overviewPanel"
+      tabindex="-1">Overview</button>
+    <button class="tab" id="servoSettingsTab" role="tab" aria-selected="false" aria-controls="servoSettingsPanel" tabindex="-1">Servo Settings</button>
+    <button class="tab" id="setupTab" role="tab" aria-selected="false" aria-controls="setupPanel" tabindex="-1">Setup</button>
   </nav>
   <main>
-    <div class="panel" id="overviewPanel" role="tabpanel" aria-labelledby="overviewTab">
+    <div class="panel" id="overviewPanel" role="tabpanel" aria-labelledby="overviewTab" hidden>
       <div class="grid">
-        <section><h2>Device</h2><dl>
-          <dt>Chip ID</dt><dd id="chipId">—</dd>
-          <dt>CPU</dt><dd id="cpu">—</dd>
-          <dt>SDK</dt><dd id="sdk">—</dd>
-          <dt>Arduino core</dt><dd id="core">—</dd>
-          <dt>Reset reason</dt><dd id="resetReason">—</dd>
-          <dt>Uptime</dt><dd id="uptime">—</dd>
-          <dt>Free heap</dt><dd id="heap">—</dd>
-          <dt>Largest free block</dt><dd id="largestBlock">—</dd>
-          <dt>Heap fragmentation</dt><dd id="fragmentation">—</dd>
-          <dt>Flash size</dt><dd id="flashSize">—</dd>
-          <dt>Sketch size</dt><dd id="sketchSize">—</dd>
-          <dt>Free OTA space</dt><dd id="otaSpace">—</dd>
-        </dl></section>
-        <section><h2>Wi-Fi</h2><dl>
-          <dt>Network</dt><dd id="ssid">—</dd>
-          <dt>IP address</dt><dd id="ip">—</dd>
-          <dt>Signal</dt><dd id="rssi">—</dd>
-          <dt>MAC</dt><dd id="mac">—</dd>
-        </dl></section>
+        <section>
+          <h2>Device</h2>
+          <dl>
+            <dt>Chip ID</dt>
+            <dd id="chipId">—</dd>
+            <dt>CPU</dt>
+            <dd id="cpu">—</dd>
+            <dt>SDK</dt>
+            <dd id="sdk">—</dd>
+            <dt>Arduino core</dt>
+            <dd id="core">—</dd>
+            <dt>Reset reason</dt>
+            <dd id="resetReason">—</dd>
+            <dt>Uptime</dt>
+            <dd id="uptime">—</dd>
+            <dt>Free heap</dt>
+            <dd id="heap">—</dd>
+            <dt>Largest free block</dt>
+            <dd id="largestBlock">—</dd>
+            <dt>Heap fragmentation</dt>
+            <dd id="fragmentation">—</dd>
+            <dt>Flash size</dt>
+            <dd id="flashSize">—</dd>
+            <dt>Sketch size</dt>
+            <dd id="sketchSize">—</dd>
+            <dt>Free OTA space</dt>
+            <dd id="otaSpace">—</dd>
+          </dl>
+        </section>
+        <section>
+          <h2>Wi-Fi</h2>
+          <dl>
+            <dt>Network</dt>
+            <dd id="ssid">—</dd>
+            <dt>IP address</dt>
+            <dd id="ip">—</dd>
+            <dt>Signal</dt>
+            <dd id="rssi">—</dd>
+            <dt>MAC</dt>
+            <dd id="mac">—</dd>
+          </dl>
+        </section>
       </div>
-      <section><h2>Serial output</h2>
+      <section>
+        <h2>Serial output</h2>
         <textarea id="serialLog" aria-label="Recent serial output" readonly></textarea>
       </section>
     </div>
-    <div class="panel" id="mixerPanel" role="tabpanel" aria-labelledby="mixerTab" hidden>      
+    <div class="panel mixer-layout" id="mixerPanel" role="tabpanel" aria-labelledby="mixerTab">
       <div class="mixer">
         <section class="channel-strip master-strip">
-          <span class="channel-number">MASTER</span><h2>Master Output</h2>
+          <span class="channel-number">MASTER</span>
+          <h2>Master Output</h2>
           <div class="meter" aria-hidden="true"></div>
-          <div class="channel-readout master-readout" id="macroStatus">Ready</div>
-          <div class="macro-description">Sweep configured servos individually or together from 0° to 180° and back, or center active servos at 90°.</div>
+          <div class="channel-readout master-readout" id="macroStatus">Ready</div>          
           <div class="master-actions">
             <button class="mix-button sweep-button" id="sweepButton" type="button">SWEEP EACH</button>
             <button class="mix-button sweep-all-button" id="sweepAllButton" type="button">SWEEP ALL</button>
             <button class="mix-button center-button" id="centerButton" type="button">CENTER ACTIVE</button>
+            <button class="mix-button all-off-button" id="allServosOffButton" type="button"
+              aria-label="Switch off all servo PWM outputs" aria-pressed="true" title="Switch off all servo PWM outputs">
+              <svg class="power-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M12 2v10M6.3 5.8a9 9 0 1 0 11.4 0" />
+              </svg>
+              <span id="servoPowerLabel">ON</span>
+            </button>
             <button class="mix-button stop-button" id="stopSweepButton" type="button" disabled>STOP</button>
           </div>
           <div id="macroError" role="alert" class="servo-error"></div>
         </section>
+        <section class="channel-strip sequencer-strip" aria-labelledby="sequencerTitle">
+          <span class="channel-number">SEQUENCER</span>
+          <h2 id="sequencerTitle">Step Sequencer</h2>          
+          <div class="sequencer-timing">
+            <div>
+          <label class="step-duration-label" for="stepDuration">Step duration</label>
+          <div class="step-duration-control">
+            <input id="stepDuration" type="number" min="100" max="60000" step="100" value="1000">
+            <span>ms</span>
+          </div>
+            </div>
+            <div>
+          <label class="step-duration-label" for="playbackRate">Playback rate</label>
+          <div class="step-duration-control">
+            <input id="playbackRate" type="number" min="0.001" max="10" step="any" value="1" aria-describedby="playbackRateHelp">
+            <span>×</span>
+          </div>
+            </div>
+          </div>
+          <div class="sequence-modes">
+            <label class="loop-setting" for="sequenceLoop"><input id="sequenceLoop" type="checkbox"> Loop</label>
+            <label class="loop-setting" for="sequenceFinish" title="Wait for commanded motion to finish instead of advancing on the step timer"><input id="sequenceFinish" type="checkbox"> Finish</label>
+          </div>
+          <div class="sequencer-actions">
+            <button class="mix-button write-step-button" id="writeStepButton" type="button">WRITE STEP</button>
+            <button class="mix-button play-sequence-button" id="playSequenceButton" type="button" disabled>PLAY</button>
+            <button class="mix-button stop-sequence-button" id="stopSequenceButton" type="button" disabled>STOP</button>
+            <button class="mix-button clear-sequence-button" id="clearSequenceButton" type="button">CLEAR</button>
+          </div>
+          <div class="sequencer-status" id="sequencerStatus" aria-live="polite">Loading saved sequence…</div>
+          <div id="sequencerError" role="alert" class="servo-error"></div>
+          <ol class="sequencer-steps" id="sequencerSteps" aria-label="Saved sequence steps"></ol>
+        </section>
       </div>
+      <section id="previewPanel" class="servo-preview" aria-labelledby="previewTitle">
+        <div class="preview-toolbar">
+          <h2 id="previewTitle">3D output</h2>
+          <div class="preview-toolbar-actions">
+            <div id="previewCameraViews" class="preview-camera-views" role="group" aria-label="Camera views">
+              <button type="button" data-view="left" title="View from left">Left</button>
+              <button type="button" data-view="right" title="View from right">Right</button>
+              <button type="button" data-view="front" title="View from front">Front</button>
+              <button type="button" data-view="back" title="View from back">Back</button>
+              <button type="button" data-view="top" title="View from top">Top</button>
+              <button type="button" data-view="bottom" title="View from bottom">Bottom</button>
+              <button id="previewProjection" type="button" aria-pressed="false" title="Toggle perspective projection">Orthographic</button>
+              <button id="previewReset" type="button" title="Reset camera">Reset camera</button>
+            </div>
+            <label class="preview-labels-toggle"><input id="previewLabels" type="checkbox"> Labels</label>
+            <button id="previewEdit" type="button" aria-pressed="false" aria-expanded="false" aria-controls="previewEditingControls previewTransform">Edit</button>
+          </div>
+        </div>
+        <label class="preview-mode"><input id="previewOffline" type="checkbox"> Offline simulation (no device commands)</label>
+        <div id="previewWindow">
+          <p>Left-drag to orbit / Right-drag to pan / Scroll to zoom</p>
+          <div class="preview-viewport">
+            <canvas id="servoScene" tabindex="0" aria-label="3D servo setup. Arrow keys orbit; plus and minus zoom."></canvas>
+            <output hidden id="previewTransform" class="preview-transform" aria-live="polite" aria-label="Selected servo transform"></output>
+          </div>
+          <p id="previewStatus" role="status">Waiting for device angles.</p>
+          <p class="subtle">Commanded angles, not measured feedback. Grey = unavailable, orange = output off, blue = muted. Parent attachments follow the shaft; 90� is neutral.</p>
+        </div>
+      </section>
+    </div>
+    <div class="panel setup-layout" id="setupPanel" role="tabpanel" aria-labelledby="setupTab" hidden>
+      <section class="setup-hierarchy">
+        <h2>Components</h2>
+        <label>Add component
+          <select id="previewAddComponent">
+            <option value="">Select component to add...</option>
+            <option value="standard">Servo: TD-7120</option>
+            <option value="micro">Servo: Micro 9g</option>
+            <option>U Bracket Short</option><option>U Bracket Long</option>
+            <option>Null</option>
+          </select>
+        </label>
+        <button id="previewAdd" type="button" disabled>Add</button>
+        <button id="previewRemove" type="button">Remove selected component</button>
+        <p class="subtle">Removing a component moves its children to its parent. Keep at least one servo.</p>
+        <p class="subtle">Drag a component onto its new parent, or onto Root to detach it. Local position and rotation stay unchanged.</p>
+        <ul id="previewServoSelection" class="component-tree" aria-label="Component hierarchy"></ul>
+      </section>
+      <section id="previewEditingControls" class="setup-options">
+        <h2 id="setupSelectedName" contenteditable="plaintext-only" role="textbox" aria-label="Selected component name" aria-multiline="false" spellcheck="false" title="Click to rename. Enter to apply; Escape to cancel.">Component options</h2>
+        <div id="setupTransforms" class="setup-transforms"></div>
+        <small class="subtle">Positions in mm; rotations in degrees, relative to the parent. Shift-click nudges for 1 mm / 1 degree.</small>
+        <button id="previewSave" type="button">Save config</button>
+        <p id="previewSaveStatus" role="status"></p>
+        <p class="subtle">Save, restart the controller and reload after adding or removing servos. Review saved sequences after changing the servo list.</p>
+      </section>
+    </div>
+    <div class="panel mixer-layout" id="servoSettingsPanel" role="tabpanel" aria-labelledby="servoSettingsTab" hidden>
+      <section class="servo-settings">
+        <h2 id="servoSettingsTitle">Servo Settings</h2>
+        <p>Select a servo's settings button in the mixer to edit its configuration.</p>
+        <form id="servoSettingsForm" hidden>
+          <div id="servoSettingsFields" class="servo-settings-fields"></div>
+          <p>Saved settings take effect after restarting the controller and reloading this page.</p>
+          <button id="servoSettingsSave" type="submit">Save config</button>
+          <button id="servoSettingsBack" type="button">Back to mixer</button>
+        </form>
+        <p id="servoSettingsStatus" role="status"></p>
+      </section>
     </div>
   </main>
   <p class="note" id="updated"></p>
-  <script src="/app.js" defer></script>
+  <script src="./3dmodels/TD-7120.js" defer></script>
+  <script src="./3dmodels/micro9g.js" defer></script>
+  <script src="./3dmodels/UBracketShort.js" defer></script>
+  <script src="./3dmodels/UBracketLong.js" defer></script>
+  <script src="./3d-renderer.js" defer></script>
   <script src="./app.js" defer></script>
 </body>
+
 </html>

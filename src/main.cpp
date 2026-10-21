@@ -28,8 +28,65 @@ bool otaReady = false;
 bool webServerReady = false;
 bool wifiConnectedPreviously = false;
 unsigned long lastWiFiStatusLogAt = 0;
+unsigned long lastServoControllerRetryAt = 0;
 char otaHostname[32];
 bool oledReady = false;
+bool servoConfigurationsReady = false;
+
+namespace {
+constexpr unsigned long kServoControllerRetryIntervalMilliseconds = 5000;
+constexpr bool kEnableOled = false;  // Onboard display is faulty; do not probe or initialize it.
+constexpr uint8_t kI2cSdaPin = 4;   // NodeMCU D2: external PCA9685 SDA.
+constexpr uint8_t kI2cSclPin = 5;   // NodeMCU D1: external PCA9685 SCL.
+constexpr uint8_t kOledSdaPin = 12;
+constexpr uint8_t kOledSclPin = 14;
+
+bool ensureI2cBusReady(const char* phase, uint8_t sdaPin = kI2cSdaPin, uint8_t sclPin = kI2cSclPin) {
+  const bool sdaWasLow = digitalRead(sdaPin) == LOW;
+  const bool sclWasLow = digitalRead(sclPin) == LOW;
+  // ESP8266 Wire.status() clocks a slave holding SDA low, with bounded waits.
+  // Unlike endTransmission(), it can clear a transfer interrupted by reset.
+  const uint8_t status = Wire.status();
+  const bool sdaLow = digitalRead(sdaPin) == LOW;
+  const bool sclLow = digitalRead(sclPin) == LOW;
+  if (status != 0 || sdaLow || sclLow) {
+    AppLog::printf("I2C bus blocked during %s: SDA GPIO%u=%s, SCL GPIO%u=%s, bus status %u.\n",
+                   phase, sdaPin, sdaLow ? "LOW" : "HIGH",
+                   sclPin, sclLow ? "LOW" : "HIGH", status);
+    return false;
+  }
+  if (sdaWasLow || sclWasLow) {
+    AppLog::printf("I2C bus recovered during %s.\n", phase);
+  }
+  return true;
+}
+
+bool initializeServo(uint8_t index, bool retry) {
+  const ServoConfiguration& configuration = servoConfigurations[index];
+  Pca9685ServoTest& servo = servos[index];
+  if (servo.isReady()) {
+    return true;
+  }
+
+  if (!servo.begin(configuration.address,
+                   configuration.channel,
+                   configuration.minimumPulseMicroseconds,
+                   configuration.maximumPulseMicroseconds,
+                   configuration.startupAngle)) {
+    if (retry) {
+      AppLog::printf("Servo channel %u is still unavailable; will retry.\n",
+                     configuration.channel + 1);
+    }
+    return false;
+  }
+
+  if (retry) {
+    AppLog::printf("Servo channel %u is available at its configured startup position.\n",
+                   configuration.channel + 1);
+  }
+  return true;
+}
+}  // namespace
 
 #if WIFI_CREDENTIALS_AVAILABLE
 void beginOta() {
@@ -86,6 +143,7 @@ bool initializeOledOnPins(int sdaPin, int sclPin) {
   Wire.begin(sdaPin, sclPin);
   Wire.setClock(100000);
   Wire.setClockStretchLimit(1000);
+  if (!ensureI2cBusReady("OLED startup", sdaPin, sclPin)) return false;
   AppLog::printf("Checking OLED on SDA GPIO%d, SCL GPIO%d...\n",
                  sdaPin, sclPin);
 
@@ -110,33 +168,36 @@ void setup() {
   AppLog::begin();
   delay(100);
 
-  oledReady = initializeOledOnPins(14, 12);
-  if (!oledReady) {
-    AppLog::println("Trying alternate SDA/SCL GPIO assignment.");
-    oledReady = initializeOledOnPins(12, 14);
-  }
-  if (!oledReady) {
-    AppLog::println(
-        "Trying common onboard OLED pins: SDA GPIO4, SCL GPIO5.");
-    oledReady = initializeOledOnPins(4, 5);
-  }
-  if (!oledReady) {
-    AppLog::println("Trying onboard OLED pins with swapped assignment.");
-    oledReady = initializeOledOnPins(5, 4);
-  }
+  oledReady = kEnableOled && initializeOledOnPins(kOledSdaPin, kOledSclPin);
+  // if (!oledReady) {
+  //   AppLog::println("Trying alternate SDA/SCL GPIO assignment.");
+  //   oledReady = initializeOledOnPins(kI2cSdaPin, kI2cSclPin);
+  // }
+  // if (!oledReady) {
+  //   AppLog::println(
+  //       "Trying common onboard OLED pins: SDA GPIO4, SCL GPIO5.");
+  //   oledReady = initializeOledOnPins(4, 5);
+  // }
+  // if (!oledReady) {
+  //   AppLog::println("Trying onboard OLED pins with swapped assignment.");
+  //   oledReady = initializeOledOnPins(5, 4);
+  // }
 
   AppLog::println();
   AppLog::println("Lamp Controller starting");
   printStartupInfo();
 
-  if (!oledReady) {
-    AppLog::println(
-        "OLED unavailable on either pin pair. Verify its pin labels, power, and ground.");
+  if (!kEnableOled) {
+    AppLog::println("OLED disabled; no display probing or initialization.");
+  } else if (!oledReady) {
+    AppLog::println("OLED unavailable; continuing without display.");
   }
 
-  Wire.begin(14, 12);  // Restore the documented PCA9685 bus: SDA GPIO14, SCL GPIO12.
+  AppLog::printf("External servo I2C: SDA GPIO%u, SCL GPIO%u.\n", kI2cSdaPin, kI2cSclPin);
+  Wire.begin(kI2cSdaPin, kI2cSclPin);  // External PCA9685 bus: SDA D2/GPIO4, SCL D1/GPIO5.
   Wire.setClock(100000);
   Wire.setClockStretchLimit(1000);
+  const bool servoBusReady = ensureI2cBusReady("servo startup");
   filesystemReady = LittleFS.begin();
   if (!filesystemReady) {
     AppLog::println("LittleFS mount failed; cannot load config.json.");
@@ -145,12 +206,11 @@ void setup() {
                                       servoCount)) {
     AppLog::println("No servo outputs initialized; fix data/config.json.");
   } else {
-    for (uint8_t index = 0; index < servoCount; ++index) {
-      const ServoConfiguration& configuration = servoConfigurations[index];
-      servos[index].begin(configuration.address,
-                          configuration.channel,
-                          configuration.minimumPulseMicroseconds,
-                          configuration.maximumPulseMicroseconds);
+    servoConfigurationsReady = true;
+    if (servoBusReady) {
+      for (uint8_t index = 0; index < servoCount; ++index) {
+        initializeServo(index, false);
+      }
     }
   }
 
@@ -178,6 +238,22 @@ void setup() {
 }
 
 void loop() {
+  const unsigned long now = millis();
+  if (servoConfigurationsReady &&
+      now - lastServoControllerRetryAt >=
+          kServoControllerRetryIntervalMilliseconds) {
+    lastServoControllerRetryAt = now;
+    bool retryNeeded = false;
+    for (uint8_t index = 0; index < servoCount; ++index) {
+      if (!servos[index].isReady()) retryNeeded = true;
+    }
+    if (retryNeeded && ensureI2cBusReady("servo retry")) {
+      for (uint8_t index = 0; index < servoCount; ++index) {
+        if (!servos[index].isReady()) initializeServo(index, true);
+      }
+    }
+  }
+
 #if WIFI_CREDENTIALS_AVAILABLE
   if (WIFI_SSID[0] != '\0' && WIFI_PASSWORD[0] != '\0') {
     if (WiFi.status() == WL_CONNECTED) {
@@ -212,7 +288,6 @@ void loop() {
       oledDisplay.showStatus("WiFi disconnected");
     }
 
-    const unsigned long now = millis();
     if (!wifiConnectedPreviously && now - lastWiFiStatusLogAt >= 10000) {
       lastWiFiStatusLogAt = now;
       AppLog::printf("Still connecting to Wi-Fi (status %d).\n",
@@ -225,4 +300,7 @@ void loop() {
     webStatusServer.handleClient();
   }
 
+  for (uint8_t index = 0; index < servoCount; ++index) {
+    servos[index].updateMotion();
+  }
 }

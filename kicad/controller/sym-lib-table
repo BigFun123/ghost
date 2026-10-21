@@ -1,0 +1,4 @@
+(sym_lib_table
+	(version 7)
+	(lib (name "Adafruit PCA9685-eagle-import") (type "KiCad") (uri "D:/dev/Electronics/Schematics/Adafruit-16-Channel-PWM-Servo-Driver-PCB-master/Adafruit PCA9685-eagle-import.kicad_sym") (options "") (descr ""))
+)

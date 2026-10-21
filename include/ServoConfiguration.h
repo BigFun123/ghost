@@ -6,6 +6,8 @@ struct ServoConfiguration {
   String name;
   uint8_t address = 0x40;
   uint8_t channel = 0;
+  uint8_t startupAngle = 0;
+  bool continuous = false;
   uint16_t minimumPulseMicroseconds = 500;
   uint16_t maximumPulseMicroseconds = 2500;
 };

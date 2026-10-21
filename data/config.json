@@ -1,25 +1,365 @@
 {
-  "servos": [
+  "servoController": {
+    "id": 1,
+    "name": "PCA9685",
+    "description": "16 Channel Servo Controller",
+    "address": "0x41",
+    "frequency": 50
+  },
+  "modes": [
+    {
+      "name": "immediate",
+      "label": "-",
+      "description": "Moves the servo to the target position immediately."
+    },
+    {
+      "name": "linear",
+      "label": "/",
+      "description": "Moves the servo to the target position at a constant speed.",
+      "speeds": [
+        {
+          "name": "slow",
+          "label": "S",
+          "description": "Moves the servo to the target position at a slow speed."
+        },
+        {
+          "name": "medium",
+          "label": "M",
+          "description": "Moves the servo to the target position at a medium speed."
+        },
+        {
+          "name": "fast",
+          "label": "F",
+          "description": "Moves the servo to the target position at a fast speed."
+        }
+      ]
+    },
+    {
+      "name": "ease-in-out",
+      "label": "~",
+      "description": "Moves the servo to the target position with an ease-in-out motion profile.",
+      "speeds": [
+        {
+          "name": "slow",
+          "label": "S",
+          "description": "Moves the servo to the target position at a slow speed."
+        },
+        {
+          "name": "medium",
+          "label": "M",
+          "description": "Moves the servo to the target position at a medium speed."
+        },
+        {
+          "name": "fast",
+          "label": "F",
+          "description": "Moves the servo to the target position at a fast speed."
+        }
+      ]
+    }
+  ],
+  "components": [
+    {
+      "name": "U Bracket Long 1",
+      "objectType": "U Bracket Long",
+      "parent": "Servo 1",
+      "position": {
+        "x": 0,
+        "y": 7,
+        "z": 0
+      },
+      "rotation": {
+        "x": 0,
+        "y": -180,
+        "z": 0
+      }
+    },
     {
       "name": "Servo 1",
-      "address": "0x40",
+      "position": {
+        "x": 30,
+        "y": 0,
+        "z": 0
+      },
+      "rotation": {
+        "x": 0,
+        "y": 180,
+        "z": 0
+      },
+      "model": "standard",
+      "parent": "U Bracket Short 1",
+      "enabled": true,
+      "initialMotionMode": "immediate",
+      "startupAngle": 90,
+      "address": "0x41",
       "channel": 0,
       "minPulseMicroseconds": 500,
-      "maxPulseMicroseconds": 2500
+      "maxPulseMicroseconds": 2500,
+      "type": "TD-7120",
+      "minAngle": 0,
+      "maxAngle": 180,
+      "reversed": false,
+      "objectType": "Servo",
+      "continuous": false
     },
     {
       "name": "Servo 2",
-      "address": "0x40",
+      "position": {
+        "x": 33,
+        "y": 0,
+        "z": 0
+      },
+      "rotation": {
+        "x": 0,
+        "y": 180,
+        "z": 0
+      },
+      "model": "standard",
+      "parent": "U Bracket Short 2",
+      "enabled": true,
+      "initialMotionMode": "immediate",
+      "startupAngle": 90,
+      "address": "0x41",
       "channel": 1,
       "minPulseMicroseconds": 500,
-      "maxPulseMicroseconds": 2500
+      "maxPulseMicroseconds": 2500,
+      "type": "TD-7120",
+      "minAngle": 0,
+      "maxAngle": 180,
+      "reversed": false,
+      "objectType": "Servo",
+      "continuous": false
     },
     {
       "name": "Servo 3",
-      "address": "0x40",
+      "position": {
+        "x": 30,
+        "y": 0,
+        "z": 0
+      },
+      "rotation": {
+        "x": 0,
+        "y": 180,
+        "z": 0
+      },
+      "model": "standard",
+      "parent": "U Bracket Short 3",
+      "enabled": true,
+      "initialMotionMode": "immediate",
+      "startupAngle": 90,
+      "address": "0x41",
       "channel": 2,
       "minPulseMicroseconds": 500,
-      "maxPulseMicroseconds": 2500
+      "maxPulseMicroseconds": 2500,
+      "type": "TD-7120",
+      "minAngle": 0,
+      "maxAngle": 180,
+      "reversed": false,
+      "objectType": "Servo",
+      "continuous": false
+    },
+    {
+      "name": "Servo 4",
+      "position": {
+        "x": 35,
+        "y": 0,
+        "z": 0
+      },
+      "rotation": {
+        "x": 0,
+        "y": 180,
+        "z": 0
+      },
+      "model": "standard",
+      "parent": "U Bracket Short 4",
+      "enabled": true,
+      "initialMotionMode": "immediate",
+      "startupAngle": 90,
+      "address": "0x41",
+      "channel": 3,
+      "minPulseMicroseconds": 500,
+      "maxPulseMicroseconds": 2500,
+      "type": "TD-7120",
+      "minAngle": 0,
+      "maxAngle": 180,
+      "reversed": false,
+      "objectType": "Servo",
+      "continuous": false
+    },
+    {
+      "name": "Servo 5",
+      "position": {
+        "x": 135,
+        "y": 0,
+        "z": 0
+      },
+      "rotation": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "model": "micro",
+      "parent": null,
+      "enabled": false,
+      "initialMotionMode": "immediate",
+      "startupAngle": 90,
+      "address": "0x41",
+      "channel": 4,
+      "minPulseMicroseconds": 500,
+      "maxPulseMicroseconds": 2500,
+      "type": "MicroServo 9g Rotary",
+      "minAngle": 0,
+      "maxAngle": 360,
+      "reversed": false,
+      "objectType": "Servo",
+      "continuous": true
+    },
+    {
+      "name": "Servo 6",
+      "position": {
+        "x": 185,
+        "y": 0,
+        "z": 0
+      },
+      "rotation": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "model": "micro",
+      "parent": null,
+      "enabled": true,
+      "initialMotionMode": "immediate",
+      "startupAngle": 90,
+      "address": "0x41",
+      "channel": 5,
+      "minPulseMicroseconds": 500,
+      "maxPulseMicroseconds": 2500,
+      "type": "MicroServo 9g",
+      "minAngle": 0,
+      "maxAngle": 180,
+      "reversed": false,
+      "objectType": "Servo",
+      "continuous": false
+    },
+    {
+      "name": "U Bracket Short 1",
+      "objectType": "U Bracket Short",
+      "parent": "Walker",
+      "position": {
+        "x": 0,
+        "y": -35,
+        "z": 0
+      },
+      "rotation": {
+        "x": 0,
+        "y": 0,
+        "z": -90
+      }
+    },
+    {
+      "name": "U Bracket Short 2",
+      "objectType": "U Bracket Short",
+      "parent": "U Bracket Long 1",
+      "position": {
+        "x": 65,
+        "y": -7,
+        "z": 0
+      },
+      "rotation": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      }
+    },
+    {
+      "name": "U Bracket Long 2",
+      "objectType": "U Bracket Long",
+      "parent": "Servo 2",
+      "position": {
+        "x": 0,
+        "y": 7,
+        "z": 0
+      },
+      "rotation": {
+        "x": 0,
+        "y": 180,
+        "z": 0
+      }
+    },
+    {
+      "name": "Walker",
+      "objectType": "Null",
+      "parent": null,
+      "position": {
+        "x": 0,
+        "y": 80,
+        "z": 0
+      },
+      "rotation": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      }
+    },
+    {
+      "name": "U Bracket Short 3",
+      "objectType": "U Bracket Short",
+      "parent": "Walker",
+      "position": {
+        "x": 65,
+        "y": -35,
+        "z": 0
+      },
+      "rotation": {
+        "x": 0,
+        "y": 0,
+        "z": -90
+      }
+    },
+    {
+      "name": "U Bracket Long 3",
+      "objectType": "U Bracket Long",
+      "parent": "Servo 3",
+      "position": {
+        "x": 0,
+        "y": 7,
+        "z": 0
+      },
+      "rotation": {
+        "x": 0,
+        "y": 180,
+        "z": 0
+      }
+    },
+    {
+      "name": "U Bracket Short 4",
+      "objectType": "U Bracket Short",
+      "parent": "U Bracket Long 3",
+      "position": {
+        "x": 65,
+        "y": -7,
+        "z": 0
+      },
+      "rotation": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      }
+    },
+    {
+      "name": "U Bracket Long 4",
+      "objectType": "U Bracket Long",
+      "parent": "Servo 4",
+      "position": {
+        "x": 0,
+        "y": 7,
+        "z": 0
+      },
+      "rotation": {
+        "x": 0,
+        "y": 180,
+        "z": 0
+      }
     }
   ]
 }

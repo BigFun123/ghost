@@ -4,19 +4,58 @@ const setText = (id, value) => {
 };
 const tabs = [
   { button: document.getElementById("overviewTab"), panel: document.getElementById("overviewPanel") },
-  { button: document.getElementById("mixerTab"), panel: document.getElementById("mixerPanel") }
+  { button: document.getElementById("mixerTab"), panel: document.getElementById("mixerPanel") },
+  { button: document.getElementById("servoSettingsTab"), panel: document.getElementById("servoSettingsPanel") },
+  { button: document.getElementById("setupTab"), panel: document.getElementById("setupPanel") }
 ];
+var previewReady = false;
 const mixer = document.querySelector(".mixer");
 const masterStrip = mixer.querySelector(".master-strip");
 const sweepButton = document.getElementById("sweepButton");
 const sweepAllButton = document.getElementById("sweepAllButton");
 const centerButton = document.getElementById("centerButton");
+const allServosOffButton = document.getElementById("allServosOffButton");
 const stopSweepButton = document.getElementById("stopSweepButton");
+const stepDurationInput = document.getElementById("stepDuration");
+const sequenceLoopInput = document.getElementById("sequenceLoop");
+const sequenceFinishInput = document.getElementById("sequenceFinish");
+const playbackRateInput = document.getElementById("playbackRate");
+const writeStepButton = document.getElementById("writeStepButton");
+const playSequenceButton = document.getElementById("playSequenceButton");
+const stopSequenceButton = document.getElementById("stopSequenceButton");
+const clearSequenceButton = document.getElementById("clearSequenceButton");
+const sequencerSteps = document.getElementById("sequencerSteps");
 let servoControls = [];
+let controllerConfiguration = null;
+let controllerRebooting = false;
+let lastDeviceUptime = null;
+let offlineSimulation = false;
+let localConfigServer = false;
+let commandModeRevision = 0;
+let masterOutputsOff = false;
 let sweepRunId = 0;
 let sweepRunning = false;
+let sequence = { loop: false, finish: false, steps: [] };
+let sequenceRunId = 0;
+let sequenceStepIndex = -1;
+let selectedSequenceStepIndex = -1;
+let sequencePlaying = false;
+let sequenceSaving = false;
+let sequenceApplying = false;
+let sequenceLoaded = false;
+let overdueSequenceSteps = new WeakSet();
 
 function selectTab(selected) {
+  // Reuse the same canvas and controls so camera/edit state survives tab changes.
+  if (selected === 1 || selected === 2 || selected === 3) {
+    tabs[selected].panel.append(document.getElementById("previewPanel"));
+  }
+  if (typeof previewReady !== "undefined" && previewReady) {
+    servoPreview.editing = selected === 3;
+    document.getElementById("previewTransform").hidden = selected !== 3;
+    document.getElementById("previewEdit").hidden = selected === 3;
+    document.getElementById("previewPanel").hidden = selected === 3 ? false : !servoPreview.active;
+  }
   tabs.forEach(({ button, panel }, index) => {
     const active = index === selected;
     button.setAttribute("aria-selected", String(active));
@@ -36,6 +75,7 @@ tabs.forEach(({ button }, index) => {
     }
   });
 });
+selectTab(1);
 
 function makeElement(tag, className, text) {
   const element = document.createElement(tag);
@@ -44,13 +84,33 @@ function makeElement(tag, className, text) {
   return element;
 }
 
+function servoCommandText(control, value) {
+  if (!control.continuous) return Math.round(value) + "\u00b0";
+  const speed = Math.round((Number(value) - 90) / 90 * 100);
+  return speed === 0 ? "STOP" : (speed > 0 ? "FWD " : "REV ") + Math.abs(speed) + "%";
+}
+
+function stopContinuousServos() {
+  servoControls.filter(control => control.continuous && control.outputEnabled).forEach(control => {
+    control.slider.value = 90;
+    scheduleCommand(control, { angle: "90", smooth: "0" });
+  });
+}
+
 function createServoStrip(configuration, channel) {
-  const strip = makeElement("section", "channel-strip");
+  const strip = makeElement("section", "channel-strip" + (configuration.continuous ? " continuous-channel" : ""));
   strip.append(makeElement("span", "channel-number", "OUTPUT " + String(channel).padStart(2, "0")));
   strip.append(makeElement("h2", "", configuration.name));
+  const settingsButton = makeElement("button", "servo-settings-button", "\u2699");
+  settingsButton.type = "button";
+  settingsButton.setAttribute("aria-label", "Settings for " + configuration.name);
+  settingsButton.title = "Servo settings";
+  settingsButton.addEventListener("click", () => openServoSettings(channel));
+  strip.append(settingsButton);
   strip.append(makeElement("div", "meter"));
   const angle = makeElement("div", "channel-readout", "0°");
   angle.id = "angle" + channel;
+  angle.textContent = servoCommandText(configuration, configuration.continuous ? 90 : 0);
   strip.append(angle);
 
   const faderWithScale = makeElement("div", "fader-with-scale");
@@ -60,9 +120,9 @@ function createServoStrip(configuration, channel) {
   slider.min = "0";
   slider.max = "180";
   slider.step = "1";
-  slider.value = "0";
+  slider.value = configuration.continuous ? "90" : "0";
   slider.id = "servoSlider" + channel;
-  slider.setAttribute("aria-label", configuration.name + " position");
+  slider.setAttribute("aria-label", configuration.name + (configuration.continuous ? " direction and speed (90 stops)" : " position"));
   slider.setAttribute("aria-orientation", "vertical");
   verticalControl.append(slider);
   const scale = makeElement("div", "scale");
@@ -79,29 +139,53 @@ function createServoStrip(configuration, channel) {
   const status = makeElement("span", "", "Unavailable");
   status.id = "servoStatus" + channel;
   pulseReadout.append(pulse, document.createTextNode(" · "), status);
-  strip.append(pulseReadout);
+
 
   const buttons = makeElement("div", "channel-buttons");
-  const muteButton = makeElement("button", "mix-button", "M");
+  const muteButton = makeElement("button", "mix-button", "MUTE");
   muteButton.type = "button";
   muteButton.id = "mute" + channel;
   muteButton.setAttribute("aria-pressed", "false");
-  const soloButton = makeElement("button", "mix-button solo", "S");
+  const soloButton = makeElement("button", "mix-button solo", "SOLO");
   soloButton.type = "button";
   soloButton.id = "solo" + channel;
   soloButton.setAttribute("aria-pressed", "false");
-  buttons.append(muteButton, soloButton);
+  const motionButton = makeElement("button", "mix-button motion-mode", "-");
+  motionButton.type = "button";
+  motionButton.id = "motionMode" + channel;
+  motionButton.setAttribute("aria-pressed", "false");
+  const speedButton = makeElement("button", "mix-button motion-speed", "H");
+  speedButton.type = "button";
+  speedButton.id = "motionSpeed" + channel;
+  const reverseButton = makeElement("button", "mix-button reverse-button", "REVERSED");
+  reverseButton.type = "button";
+  const powerButton = makeElement("button", "mix-button servo-power", "\u23fb");
+  powerButton.type = "button";
+  buttons.append(muteButton, soloButton, motionButton, speedButton, reverseButton, powerButton);
+  const centerButton = makeElement("button", "mix-button servo-center", "C");
+  centerButton.type = "button";
+  centerButton.setAttribute("aria-label", (configuration.continuous ? "Stop " : "Center ") + configuration.name);
+  centerButton.title = configuration.continuous ? "Stop / neutral" : "Center at 90 degrees";
+  centerButton.addEventListener("click", () => {
+    stopSweep(); stopSequence();
+    const control = servoControls[channel - 1];
+    if (!control.ready || !control.outputEnabled || controllerRebooting) return;
+    control.slider.value = 90;
+    setText("angle" + channel, servoCommandText(control, 90));
+    scheduleCommand(control, configuration.continuous ? { angle: "90", smooth: "0" } : { angle: "90" });
+  });
+  strip.append(centerButton);
   strip.append(buttons);
   const error = makeElement("div", "servo-error");
   error.id = "servoMessage" + channel;
   error.setAttribute("role", "alert");
   strip.append(error);
-  return { strip, slider, muteButton, soloButton, angle };
+  return { strip, slider, scale, muteButton, soloButton, motionButton, speedButton, reverseButton, powerButton, angle };
 }
 
 function isEligible(control) {
   const hasSolo = servoControls.some(candidate => candidate.solo);
-  return control.ready && !control.muted && (!hasSolo || control.solo);
+  return control.ready && control.outputEnabled && !control.muted && (!hasSolo || control.solo);
 }
 
 function stopSweep() {
@@ -113,22 +197,530 @@ function stopSweep() {
   centerButton.disabled = false;
   stopSweepButton.disabled = true;
   setText("macroStatus", "Stopped");
+  updateSequencerControls();
 }
 
-async function requestServo(control, command) {
+function updateSequencerControls() {
+  const allServosReady = servoControls.length > 0 &&
+    servoControls.every(control => control.ready);
+  const locked = controllerRebooting || sequencePlaying || sequenceSaving || sequenceApplying ||
+    !sequenceLoaded;
+  writeStepButton.textContent = selectedSequenceStepIndex < 0
+    ? "WRITE STEP"
+    : "UPDATE STEP";
+  writeStepButton.disabled = locked || !allServosReady ||
+    (selectedSequenceStepIndex < 0 && sequence.steps.length >= 32);
+  playSequenceButton.disabled = locked || sweepRunning ||
+    !allServosReady || sequence.steps.length === 0;
+  stopSequenceButton.disabled = !sequencePlaying;
+  clearSequenceButton.disabled = locked || sequence.steps.length === 0;
+  stepDurationInput.disabled = locked;
+  sequenceLoopInput.disabled = locked;
+  sequenceFinishInput.disabled = locked;
+  playbackRateInput.disabled = locked;
+  sequencerSteps.querySelectorAll("input, button").forEach(element => {
+    element.disabled = locked || (element.classList.contains("move-step-up-button") && element.dataset.stepIndex === "0");
+  });
+}
+
+function setServoPlaybackLock(locked) {
+  servoControls.forEach(control => {
+    const disabled = controllerRebooting || !control.ready || locked;
+    control.slider.disabled = disabled;
+    control.muteButton.disabled = disabled;
+    control.soloButton.disabled = disabled;
+    control.motionButton.disabled = disabled;
+    control.speedButton.disabled = disabled;
+    control.reverseButton.disabled = disabled;
+  });
+}
+
+function renderSequence() {
+  sequencerSteps.replaceChildren();
+  sequenceLoopInput.checked = sequence.loop;
+  sequenceFinishInput.checked = sequence.finish === true;
+  sequence.steps.forEach((step, index) => {
+    const item = makeElement("li");
+    if (index === sequenceStepIndex) item.setAttribute("aria-current", "step");
+    const row = makeElement("div", "sequencer-step-row");
+    const select = makeElement(
+      "button",
+      "mix-button sequence-step-select",
+      "Step " + (index + 1)
+    );
+    select.type = "button";
+    select.setAttribute(
+      "aria-pressed",
+      String(index === selectedSequenceStepIndex)
+    );
+    select.addEventListener("click", () => selectSequenceStep(index));
+    row.append(select);
+
+    const duration = makeElement("input", "sequence-step-duration");
+    if (overdueSequenceSteps.has(step)) {
+      duration.classList.add("step-time-overrun");
+      duration.title = "Servo motion could not complete within this step duration.";
+      duration.setAttribute("aria-label", "Step " + (index + 1) + " duration in milliseconds; motion exceeded this duration");
+    }
+    duration.type = "number";
+    duration.min = "100";
+    duration.max = "60000";
+    duration.step = "100";
+    duration.value = String(step.durationMs);
+    if (!overdueSequenceSteps.has(step)) duration.setAttribute("aria-label", "Step " + (index + 1) + " duration in milliseconds");
+    duration.addEventListener("change", () => {
+      const durationMs = Number(duration.value);
+      if (!Number.isInteger(durationMs) || durationMs < 100 || durationMs > 60000) {
+        setText("sequencerError", "Step duration must be between 100 and 60000 milliseconds.");
+        renderSequence();
+        return;
+      }
+      const updated = {
+        ...sequence,
+        steps: sequence.steps.map((savedStep, stepIndex) =>
+          stepIndex === index ? { ...savedStep, durationMs } : savedStep)
+      };
+      saveSequenceChange(updated);
+    });
+    row.append(duration);
+
+    const remove = makeElement("button", "mix-button remove-step-button", "×");
+    remove.type = "button";
+    remove.title = "Remove step " + (index + 1);
+    remove.setAttribute("aria-label", "Remove step " + (index + 1));
+    remove.addEventListener("click", () => {
+      const previousSelection = selectedSequenceStepIndex;
+      if (selectedSequenceStepIndex === index) {
+        selectedSequenceStepIndex = -1;
+      } else if (selectedSequenceStepIndex > index) {
+        selectedSequenceStepIndex -= 1;
+      }
+      const updated = {
+        ...sequence,
+        steps: sequence.steps.filter((_, stepIndex) => stepIndex !== index)
+      };
+      saveSequenceChange(updated, previousSelection);
+    });
+    const moveUp = makeElement("button", "mix-button move-step-up-button", "\u2191");
+    moveUp.type = "button";
+    moveUp.dataset.stepIndex = String(index);
+    moveUp.title = "Move step " + (index + 1) + " up";
+    moveUp.setAttribute("aria-label", moveUp.title);
+    moveUp.addEventListener("click", () => moveSequenceStepUp(index));
+    row.append(moveUp, remove);
+    item.append(row);
+    sequencerSteps.append(item);
+  });
+  updateSequencerControls();
+}
+
+function moveSequenceStepUp(index) {
+  if (controllerRebooting || sequencePlaying || sequenceSaving || sequenceApplying || !sequenceLoaded ||
+      !Number.isInteger(index) || index <= 0 || index >= sequence.steps.length) return;
+  const previousSelection = selectedSequenceStepIndex;
+  const steps = [...sequence.steps];
+  [steps[index - 1], steps[index]] = [steps[index], steps[index - 1]];
+  if (selectedSequenceStepIndex === index) selectedSequenceStepIndex--;
+  else if (selectedSequenceStepIndex === index - 1) selectedSequenceStepIndex++;
+  return saveSequenceChange({ ...sequence, steps }, previousSelection);
+}
+
+function captureSequenceStep(durationMs) {
+  return {
+    angles: servoControls.map(control => Number(control.slider.value)),
+    servoStates: servoControls.map(encodeServoState),
+    durationMs
+  };
+}
+
+async function applySequenceStep(step, useStartupMotion = false, playbackRate = 1) {
+  step.servoStates.forEach((state, servoIndex) => {
+    applyServoState(servoControls[servoIndex], state);
+  });
+  const hasSolo = servoControls.some(control => control.solo);
+  await Promise.all(step.angles.map(async (angle, servoIndex) => {
+    const control = servoControls[servoIndex];
+    const enabled = !control.muted && (!hasSolo || control.solo);
+    await requestServo(control, {
+      angle: String(angle),
+      enabled: enabled ? "1" : "0",
+      smooth: useStartupMotion || control.smoothMode ? "1" : "0",
+      speed: useStartupMotion ? "M" : control.motionSpeed,
+      playbackRate: String(playbackRate)
+    });
+    control.slider.value = angle;
+    setText("angle" + control.channel, servoCommandText(control, angle));
+  }));
+}
+
+function getMediumMotionDuration(step) {
+  const longestDistance = Math.max(...step.angles.map((angle, servoIndex) =>
+    Math.abs(angle - Number(servoControls[servoIndex].slider.value))));
+  return Math.max(50, Math.ceil(longestDistance * 3000 / 180));
+}
+
+async function selectSequenceStep(index) {
+  if (sequencePlaying || sequenceSaving || sequenceApplying) return;
+  if (selectedSequenceStepIndex === index) {
+    selectedSequenceStepIndex = -1;
+    renderSequence();
+    setText("sequencerError", "");
+    setText("sequencerStatus", sequence.steps.length + " step(s) saved on device");
+    return;
+  }
+
+  selectedSequenceStepIndex = index;
+  sequenceApplying = true;
+  setServoPlaybackLock(true);
+  renderSequence();
+  setText("sequencerError", "");
+  setText("sequencerStatus", "Loading step " + (index + 1));
+  stepDurationInput.value = String(sequence.steps[index].durationMs);
+  try {
+    await applySequenceStep(sequence.steps[index]);
+    setText("sequencerStatus", "Step " + (index + 1) + " selected");
+  } catch (error) {
+    setText("sequencerStatus", "Could not load step " + (index + 1));
+    setText("sequencerError", error.message);
+  } finally {
+    sequenceApplying = false;
+    setServoPlaybackLock(false);
+    updateSequencerControls();
+  }
+}
+
+function encodeServoState(control) {
+  // Bits 0-2 hold mute, solo, and smooth; bits 3-4 hold low, medium, or high speed.
+  const speed = control.motionSpeed === "L" ? 0 :
+    control.motionSpeed === "M" ? 1 : 2;
+  return (control.muted ? 1 : 0) |
+    (control.solo ? 2 : 0) |
+    (control.smoothMode ? 4 : 0) |
+    (speed << 3);
+}
+
+function applyServoState(control, encodedState) {
+  control.muted = (encodedState & 1) !== 0;
+  control.solo = (encodedState & 2) !== 0;
+  control.smoothMode = (encodedState & 4) !== 0;
+  const speed = (encodedState >> 3) & 3;
+  control.motionSpeed = speed === 0 ? "L" : speed === 1 ? "M" : "H";
+  syncServoStateButtons(control);
+  syncMotionMode(control);
+  syncMotionSpeed(control);
+}
+
+async function saveSequenceChange(updated, previousSelection = selectedSequenceStepIndex) {
+  if (sequencePlaying || sequenceSaving) return;
+  const previous = sequence;
+  sequence = updated;
+  renderSequence();
+  sequenceSaving = true;
+  updateSequencerControls();
+  setText("sequencerError", "");
+  setText("sequencerStatus", "Saving sequence…");
+  try {
+    if (offlineSimulation && !localConfigServer) {
+      setText("sequencerStatus", sequence.steps.length + " simulation step(s), kept in this page");
+      return;
+    }
+    const response = await fetch("/api/sequence", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(sequence)
+    });
+    const result = await response.text();
+    if (!response.ok) throw new Error(result || "HTTP " + response.status);
+    setText("sequencerStatus", sequence.steps.length + (localConfigServer ? " step(s) saved to data/sequence.json" : " step(s) saved on device"));
+  } catch (error) {
+    sequence = previous;
+    selectedSequenceStepIndex = previousSelection;
+    renderSequence();
+    setText("sequencerStatus", "Sequence was not saved");
+    setText("sequencerError", error.message);
+  } finally {
+    sequenceSaving = false;
+    updateSequencerControls();
+  }
+}
+
+async function loadSequence() {
+  const response = await fetch("/api/sequence", { cache: "no-store", signal: AbortSignal.timeout(3000) });
+  if ((!localConfigServer && offlineSimulation) || response.status === 404 || response.status === 405 ||
+      response.headers?.get("content-type")?.includes("text/html")) {
+    sequenceLoaded = true;
+    setText("sequencerError", "");
+    setText("sequencerStatus", "Local sequence - ready");
+    renderSequence();
+    return;
+  }
+  if (!response.ok) {
+    const result = await response.text();
+    throw new Error(/<[^>]+>/.test(result) ? "Could not load sequence (HTTP " + response.status + ")" : result || "HTTP " + response.status);
+  }
+  const saved = await response.json();
+  if (typeof saved.loop !== "boolean" || (saved.finish !== undefined && typeof saved.finish !== "boolean") || !Array.isArray(saved.steps) ||
+    saved.steps.length > 32 ||
+    saved.steps.some(step =>
+      !Array.isArray(step.angles) || step.angles.length !== servoControls.length ||
+      (step.servoStates !== undefined &&
+        (!Array.isArray(step.servoStates) ||
+          step.servoStates.length !== servoControls.length ||
+          step.servoStates.some(state =>
+            !Number.isInteger(state) || state < 0 || state > 23))) ||
+      !Number.isInteger(step.durationMs) || step.durationMs < 100 ||
+      step.durationMs > 60000 ||
+      step.angles.some(angle => !Number.isInteger(angle) || angle < 0 || angle > 180))) {
+    throw new Error("Stored sequence data has an invalid format.");
+  }
+  sequence = {
+    ...saved,
+    finish: saved.finish === true,
+    steps: saved.steps.map(step => ({
+      ...step,
+      servoStates: step.servoStates || servoControls.map(encodeServoState)
+    }))
+  };
+  sequenceLoaded = true;
+  renderSequence();
+  setText("sequencerStatus", sequence.steps.length + (localConfigServer ? " step(s) loaded from data/sequence.json" : " step(s) saved on device"));
+}
+
+async function writeSequenceStep() {
+  const durationMs = Number(stepDurationInput.value);
+  if (!Number.isInteger(durationMs) || durationMs < 100 || durationMs > 60000) {
+    setText("sequencerError", "New step duration must be between 100 and 60000 milliseconds.");
+    return;
+  }
+  if (!servoControls.every(control => control.ready)) {
+    setText("sequencerError", "All configured servos must be available to write a step.");
+    return;
+  }
+  if (selectedSequenceStepIndex < 0 && sequence.steps.length >= 32) {
+    setText("sequencerError", "The sequence is limited to 32 steps.");
+    return;
+  }
+  setText("sequencerError", "");
+  const step = captureSequenceStep(durationMs);
+  const steps = sequence.steps.slice();
+  if (selectedSequenceStepIndex < 0) {
+    steps.push(step);
+  } else {
+    step.durationMs = steps[selectedSequenceStepIndex].durationMs;
+    steps[selectedSequenceStepIndex] = step;
+  }
+  await saveSequenceChange({ ...sequence, steps });
+}
+
+function waitForStep(runId, durationMs) {
+  return new Promise(resolve => {
+    const startedAt = Date.now();
+    function check() {
+      const remaining = durationMs - (Date.now() - startedAt);
+      if (runId !== sequenceRunId || remaining <= 0) {
+        resolve();
+      } else {
+        setTimeout(check, Math.min(50, remaining));
+      }
+    }
+    check();
+  });
+}
+
+function sequenceStepWaitMilliseconds(step, playbackRate, motionEnds) {
+  if (!sequence.finish) return step.durationMs / playbackRate;
+  const remaining = Math.max(0, ...motionEnds.map(end => end - performance.now()));
+  // Continuous servos have no destination, so their run time still comes from the step.
+  const continuousDuration = servoControls.some(control => isEligible(control) && control.continuous)
+    ? step.durationMs / playbackRate : 0;
+  // Yield even for immediate moves so a looping sequence remains stoppable.
+  return Math.max(16, remaining, continuousDuration);
+}
+
+async function playSequence() {
+  if (controllerRebooting || sequencePlaying || sweepRunning || sequence.steps.length === 0) return;
+  const playbackRate = Number(playbackRateInput.value);
+  if (!Number.isFinite(playbackRate) || playbackRate < 0.001 || playbackRate > 10) {
+    setText("sequencerError", "Playback rate must be between 0.001 and 10.");
+    return;
+  }
+  if (!servoControls.every(control => control.ready)) {
+    setText("sequencerError", "All configured servos must be available to play the sequence.");
+    return;
+  }
+
+  setText("sequencerError", "");
+  sequencePlaying = true;
+  overdueSequenceSteps = new WeakSet();
+  const runId = ++sequenceRunId;
+  setServoPlaybackLock(true);
+  updateSequencerControls();
+  sweepButton.disabled = true;
+  sweepAllButton.disabled = true;
+  centerButton.disabled = true;
+  stopSweepButton.disabled = true;
+  let index = 0;
+  try {
+    const firstStep = sequence.steps[0];
+    setText("sequencerStatus", "Moving smoothly to the first step");
+    const startupMotionDuration = getMediumMotionDuration(firstStep);
+    await applySequenceStep(firstStep, true, playbackRate);
+    await waitForStep(runId, startupMotionDuration / playbackRate);
+    if (runId !== sequenceRunId) return;
+
+    while (runId === sequenceRunId) {
+      const step = sequence.steps[index];
+      sequenceStepIndex = index;
+      renderSequence();
+      setText("sequencerStatus", "Playing step " + (index + 1) +
+        " of " + sequence.steps.length);
+      await applySequenceStep(step, false, playbackRate);
+      const deadline = performance.now() + step.durationMs / playbackRate;
+      const motionEnds = activeStepMotionEnds();
+      await waitForStep(runId, sequenceStepWaitMilliseconds(step, playbackRate, motionEnds));
+      if (runId !== sequenceRunId) break;
+      if (!sequence.finish && motionEnds.some(end => end > deadline + 1)) {
+        overdueSequenceSteps.add(step);
+      }
+      index += 1;
+      if (index >= sequence.steps.length) {
+        if (!sequence.loop) break;
+        index = 0;
+      }
+    }
+    if (runId === sequenceRunId) {
+      setText("sequencerStatus", "Playback complete");
+    }
+  } catch (error) {
+    if (runId === sequenceRunId) {
+      setText("sequencerStatus", "Playback failed");
+      setText("sequencerError", error.message);
+    }
+  } finally {
+    if (runId === sequenceRunId) {
+      sequencePlaying = false;
+      stopContinuousServos();
+      sequenceStepIndex = -1;
+      setServoPlaybackLock(false);
+      sweepButton.disabled = false;
+      sweepAllButton.disabled = false;
+      centerButton.disabled = false;
+      stopSweepButton.disabled = true;
+      renderSequence();
+    }
+  }
+}
+
+function stopSequence() {
+  if (!sequencePlaying) return;
+  sequenceRunId += 1;
+  sequencePlaying = false;
+  stopContinuousServos();
+  sequenceStepIndex = -1;
+  setServoPlaybackLock(false);
+  renderSequence();
+  setText("sequencerStatus", "Playback stopped");
+  updateSequencerControls();
+  sweepButton.disabled = false;
+  sweepAllButton.disabled = false;
+  centerButton.disabled = false;
+  stopSweepButton.disabled = true;
+}
+
+writeStepButton.addEventListener("click", writeSequenceStep);
+playSequenceButton.addEventListener("click", playSequence);
+stopSequenceButton.addEventListener("click", stopSequence);
+clearSequenceButton.addEventListener("click", () => {
+  if (window.confirm("Delete all saved sequencer steps?")) {
+    const previousSelection = selectedSequenceStepIndex;
+    selectedSequenceStepIndex = -1;
+    saveSequenceChange({ ...sequence, steps: [] }, previousSelection);
+  }
+});
+sequenceLoopInput.addEventListener("change", () => {
+  saveSequenceChange({ ...sequence, loop: sequenceLoopInput.checked });
+});
+sequenceFinishInput.addEventListener("change", () => {
+  saveSequenceChange({ ...sequence, finish: sequenceFinishInput.checked });
+});
+
+function estimatedCommandedAngle(control, now) {
+  const motion = control.commandedMotion;
+  if (!motion) return control.reportedAngle ?? Number(control.slider.value);
+  const t = Math.max(0, Math.min(1, (now - motion.at) / motion.duration));
+  const progress = motion.smooth ? t * t * (3 - 2 * t) : t;
+  return motion.start + (motion.target - motion.start) * progress;
+}
+
+function trackCommandedMotion(control, request, at) {
+  const start = estimatedCommandedAngle(control, at);
+  if (request.outputEnabled === "0") {
+    control.reportedAngle = start;
+    control.commandedMotion = null;
+    return;
+  }
+  if (request.angle === undefined) return;
+  const target = Number(request.angle);
+  if (request.smooth !== "1" || target === start) {
+    control.reportedAngle = target;
+    control.commandedMotion = null;
+    return;
+  }
+  const multiplier = request.speed === "L" ? 4 : request.speed === "M" ? 2 : 1;
+  const duration = Math.max(50, Math.ceil(Math.abs(target - start) * 1500 * multiplier / (180 * (Number(request.playbackRate) || 1))));
+  control.commandedMotion = { start, target, duration, at, smooth: true };
+}
+
+function activeStepMotionEnds() {
+  return servoControls.filter(control => isEligible(control) && !control.continuous).map(control => {
+    const motion = offlineSimulation
+      ? servoPreview?.servoNodes[control.channel - 1].motion : control.commandedMotion;
+    return motion ? motion.at + motion.duration : 0;
+  });
+}
+
+function requestServo(control, command) {
+  if (controllerRebooting) return Promise.reject(new Error("Controller is rebooting"));
+  // Serialize UI, macro, sequence, and power commands for each output.
+  const revision = commandModeRevision;
+  const result = control.requestQueue.then(() => {
+    if (revision !== commandModeRevision) return;
+    return performServoRequest(control, command);
+  });
+  control.requestQueue = result.catch(() => {});
+  return result;
+}
+
+async function performServoRequest(control, command) {
+  const request = { ...command };
+  // Saved steps and macros cannot restart motion while this output is off.
+  if (!control.outputEnabled) delete request.angle;
+  if (Object.keys(request).length === 0) return;
+  if (request.angle !== undefined && request.smooth === undefined) {
+    request.smooth = control.smoothMode ? "1" : "0";
+  }
+  if (request.angle !== undefined && request.speed === undefined) {
+    request.speed = control.motionSpeed;
+  }
+  if (offlineSimulation) {
+    simulateServoRequest(control, request);
+    return;
+  }
+  const motionStartedAt = performance.now();
   const response = await fetch("/api/servo", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ channel: String(control.channel), ...command })
+    body: new URLSearchParams({ channel: String(control.channel), ...request })
   });
   const result = await response.text();
   if (!response.ok) throw new Error(result || "HTTP " + response.status);
+  trackCommandedMotion(control, request, motionStartedAt);
 }
 
 async function sendAngle(control, angle) {
   await requestServo(control, { angle: String(angle) });
   control.slider.value = angle;
-  setText("angle" + control.channel, angle + "°");
+  setText("angle" + control.channel, servoCommandText(control, angle));
 }
 
 function scheduleCommand(control, command) {
@@ -159,11 +751,31 @@ function syncMuteSolo() {
     const enabled = !control.muted &&
       (!servoControls.some(candidate => candidate.solo) || control.solo);
     scheduleCommand(control, { enabled: enabled ? "1" : "0" });
-    control.muteButton.setAttribute("aria-pressed", String(control.muted));
-    control.soloButton.setAttribute("aria-pressed", String(control.solo));
-    control.muteButton.textContent = control.muted ? "MUTED" : "MUTE";
-    control.soloButton.textContent = control.solo ? "SOLO ON" : "SOLO";
+    syncServoStateButtons(control);
   });
+}
+
+function syncServoStateButtons(control) {
+  control.muteButton.setAttribute("aria-pressed", String(control.muted));
+  control.soloButton.setAttribute("aria-pressed", String(control.solo));
+  control.muteButton.textContent = "MUTE";
+  control.soloButton.textContent = "SOLO";
+}
+
+function syncMotionMode(control) {
+  control.motionButton.setAttribute("aria-pressed", String(control.smoothMode));
+  control.motionButton.textContent = control.smoothMode ? "/" : "-";
+  const mode = control.smoothMode ? "smooth" : "immediate";
+  control.motionButton.setAttribute("aria-label", control.name + " motion mode: " + mode);
+  control.motionButton.title = "Motion mode: " + mode;
+}
+
+function syncMotionSpeed(control) {
+  control.speedButton.textContent = control.motionSpeed;
+  const speedName = control.motionSpeed === "L" ? "low" :
+    control.motionSpeed === "M" ? "medium" : "high";
+  control.speedButton.setAttribute("aria-label", control.name + " motion speed: " + speedName);
+  control.speedButton.title = "Motion speed: " + speedName;
 }
 
 function initializeServoControls(configurations) {
@@ -175,16 +787,33 @@ function initializeServoControls(configurations) {
       ...ui,
       channel,
       name: configuration.name,
+      continuous: configuration.continuous === true,
       ready: false,
       pendingCommand: null,
       timer: null,
       inFlight: false,
+      requestQueue: Promise.resolve(),
+      outputEnabled: true,
+      powerPending: false,
+      powerRevision: 0,
+      reversed: false,
       muted: false,
-      solo: false
+      solo: false,
+      smoothMode: true,
+      motionSpeed: "M"
     };
+    syncMotionMode(control);
+    syncMotionSpeed(control);
+    syncReverse(control);
+    syncServoPower(control);
+    ui.reverseButton.addEventListener("click", () => {
+      control.reversed = !control.reversed;
+      syncReverse(control);
+    });
+    ui.powerButton.addEventListener("click", () => setServoPower(control, !control.outputEnabled));
     ui.slider.addEventListener("input", () => {
       stopSweep();
-      setText("angle" + channel, ui.slider.value + "°");
+      setText("angle" + channel, servoCommandText(control, Number(ui.slider.value)));
       scheduleCommand(control, { angle: ui.slider.value });
     });
     ui.slider.addEventListener("change", () => {
@@ -203,12 +832,21 @@ function initializeServoControls(configurations) {
       control.solo = !control.solo;
       syncMuteSolo();
     });
+    ui.motionButton.addEventListener("click", () => {
+      control.smoothMode = !control.smoothMode;
+      syncMotionMode(control);
+    });
+    ui.speedButton.addEventListener("click", () => {
+      control.motionSpeed = control.motionSpeed === "L" ? "M" :
+        control.motionSpeed === "M" ? "H" : "L";
+      syncMotionSpeed(control);
+    });
     servoControls.push(control);
   });
 }
 
 async function runMacro(action) {
-  if (sweepRunning) return;
+  if (controllerRebooting || sweepRunning || sequencePlaying) return;
   if (!servoControls.some(isEligible)) {
     setText("macroError", "No active servo is available for this macro.");
     return;
@@ -220,6 +858,7 @@ async function runMacro(action) {
   sweepAllButton.disabled = true;
   centerButton.disabled = true;
   stopSweepButton.disabled = false;
+  updateSequencerControls();
   try {
     await action(runId);
     if (runId === sweepRunId) setText("macroStatus", "Complete");
@@ -235,6 +874,7 @@ async function runMacro(action) {
       sweepAllButton.disabled = false;
       centerButton.disabled = false;
       stopSweepButton.disabled = true;
+      updateSequencerControls();
     }
   }
 }
@@ -249,7 +889,7 @@ function sweepAngles() {
 sweepButton.addEventListener("click", () => runMacro(async runId => {
   for (const control of servoControls) {
     if (runId !== sweepRunId) return;
-    if (!isEligible(control)) continue;
+    if (!isEligible(control) || control.continuous) continue;
     setText("macroStatus", "Sweeping " + control.name);
     for (const angle of sweepAngles()) {
       if (runId !== sweepRunId || !isEligible(control)) break;
@@ -261,7 +901,7 @@ sweepButton.addEventListener("click", () => runMacro(async runId => {
 sweepAllButton.addEventListener("click", () => runMacro(async runId => {
   for (const angle of sweepAngles()) {
     if (runId !== sweepRunId) return;
-    const eligible = servoControls.filter(isEligible);
+    const eligible = servoControls.filter(control => isEligible(control) && !control.continuous);
     if (eligible.length === 0) return;
     setText("macroStatus", "Sweeping all active servos");
     await Promise.all(eligible.map(control => sendAngle(control, angle)));
@@ -276,12 +916,84 @@ centerButton.addEventListener("click", () => runMacro(async runId => {
   }));
 }));
 stopSweepButton.addEventListener("click", stopSweep);
+function syncReverse(control) {
+  control.strip.classList.toggle("reversed", control.reversed);
+  control.reverseButton.setAttribute("aria-pressed", String(control.reversed));
+  control.reverseButton.setAttribute("aria-label", control.name + " reversed slider direction");
+  control.reverseButton.title = control.continuous ? "Reverse direction/speed slider" : "Reverse position slider";
+  const low = control.continuous ? "REV 100%" : "0\u00b0";
+  const high = control.continuous ? "FWD 100%" : "180\u00b0";
+  control.scale.firstElementChild.textContent = control.reversed ? low : high;
+  control.scale.children[1].textContent = control.continuous ? "STOP" : "90\u00b0";
+  control.scale.lastElementChild.textContent = control.reversed ? high : low;
+}
+
+function syncServoPower(control) {
+  control.powerButton.setAttribute("aria-pressed", String(control.outputEnabled));
+  const action = "Switch " + (control.outputEnabled ? "off " : "on ") + control.name + " PWM output";
+  control.powerButton.setAttribute("aria-label", action);
+  control.powerButton.title = action;
+  control.powerButton.disabled = controllerRebooting || !control.ready || control.powerPending;
+}
+
+function syncMasterPower() {
+  masterOutputsOff = servoControls.length > 0 && servoControls.every(control => !control.outputEnabled);
+  const allOn = servoControls.length > 0 && servoControls.every(control => control.outputEnabled);
+  setText("servoPowerLabel", masterOutputsOff ? "OFF" : allOn ? "ON" : "MIXED");
+  allServosOffButton.setAttribute("aria-pressed", String(allOn));
+  const action = masterOutputsOff ? "Switch on all servo PWM outputs" : "Switch off all servo PWM outputs";
+  allServosOffButton.setAttribute("aria-label", action);
+  allServosOffButton.title = action;
+  allServosOffButton.disabled = controllerRebooting || servoControls.some(control => control.powerPending);
+}
+
+async function setServoPower(control, enabled) {
+  if (!control.ready || control.powerPending) return;
+  const previous = control.outputEnabled;
+  control.outputEnabled = enabled;
+  control.powerPending = true;
+  control.powerRevision += 1;
+  control.pendingCommand = null;
+  if (control.timer !== null) {
+    clearTimeout(control.timer);
+    control.timer = null;
+  }
+  syncServoPower(control);
+  syncMasterPower();
+  try {
+    // Finish requests already in flight before changing the output state.
+    await requestServo(control, { outputEnabled: enabled ? "1" : "0" });
+    setText("servoMessage" + control.channel, "");
+  } catch (error) {
+    control.outputEnabled = previous;
+    setText("servoMessage" + control.channel, "Power command failed: " + error.message);
+  } finally {
+    control.powerPending = false;
+    control.powerRevision += 1;
+    syncServoPower(control);
+    syncMasterPower();
+  }
+}
+
+allServosOffButton.addEventListener("click", () => {
+  stopSweep();
+  stopSequence();
+  const enabled = masterOutputsOff;
+  servoControls.forEach(control => setServoPower(control, enabled));
+});
 
 async function refresh() {
+  if (offlineSimulation || controllerRebooting) return;
+  const modeRevision = commandModeRevision;
+  const powerRevisions = servoControls.map(control => control.powerRevision);
   try {
-    const response = await fetch("/api/status", { cache: "no-store" });
+    const response = await fetch("/api/status", { cache: "no-store", signal: AbortSignal.timeout(3000) });
     if (!response.ok) throw new Error("HTTP " + response.status);
     const status = await response.json();
+    if (controllerRebooting) return;
+    lastDeviceUptime = status.device.uptimeSeconds;
+    if (modeRevision !== commandModeRevision) return;
+    updateServoPreview(status.servos);
     setText("connection", status.wifi.connected ? "Online" : "Wi-Fi disconnected");
     setText("chipId", status.device.chipId);
     setText("cpu", status.device.cpuMHz + " MHz");
@@ -308,28 +1020,45 @@ async function refresh() {
         control.slider.disabled = true;
         control.muteButton.disabled = true;
         control.soloButton.disabled = true;
+        control.motionButton.disabled = true;
+        control.speedButton.disabled = true;
+        control.reverseButton.disabled = true;
+        syncServoPower(control);
         continue;
       }
       control.ready = servo.ready;
+      control.reportedAngle = servo.angleDegrees;
       control.name = servo.name;
+      if (!control.powerPending && powerRevisions[control.channel - 1] === control.powerRevision) {
+        control.outputEnabled = servo.outputEnabled !== false;
+      }
+      syncServoPower(control);
       setText("servoStatus" + control.channel,
-        !servo.ready ? "Unavailable" : servo.enabled ? "Active" : "Muted");
-      setText("angle" + control.channel, servo.ready ? servo.angleDegrees + "°" : "—");
+        !servo.ready ? "Unavailable" : !control.outputEnabled ? "Off" :
+          servo.enabled ? "Active" : "Muted");
+      setText("angle" + control.channel, servo.ready ? servoCommandText(control, servo.angleDegrees) : "Unavailable");
       setText("pulse" + control.channel, servo.ready ? servo.pulseMicroseconds + " µs" : "—");
-      control.slider.disabled = !servo.ready;
-      control.muteButton.disabled = !servo.ready;
-      control.soloButton.disabled = !servo.ready;
+      control.slider.disabled = !servo.ready || sequencePlaying || sequenceApplying;
+      control.muteButton.disabled = !servo.ready || sequencePlaying || sequenceApplying;
+      control.soloButton.disabled = !servo.ready || sequencePlaying || sequenceApplying;
+      control.motionButton.disabled = !servo.ready || sequencePlaying || sequenceApplying;
+      control.speedButton.disabled = !servo.ready || sequencePlaying || sequenceApplying;
+      control.reverseButton.disabled = !servo.ready || sequencePlaying || sequenceApplying;
       if (document.activeElement !== control.slider && servo.ready) {
         control.slider.value = servo.angleDegrees;
       }
     }
+    syncMasterPower();
+    updateSequencerControls();
     setText("updated", "Last updated: " + new Date().toLocaleTimeString());
   } catch (error) {
-    setText("connection", "Status unavailable: " + error.message);
+    if (controllerRebooting || modeRevision !== commandModeRevision) return;
+    setOfflineSimulation(true);
   }
 }
 
 async function refreshLog() {
+  if (offlineSimulation || controllerRebooting) return;
   const box = document.getElementById("serialLog");
   const wasAtBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 24;
   try {
@@ -344,20 +1073,72 @@ async function refreshLog() {
 
 async function start() {
   try {
-    let response = await fetch("/config.json", { cache: "no-store" });
-    if (!response.ok) {
-      response = await fetch("./config.json", { cache: "no-store" });
+    if (location.hostname === "127.0.0.1" || location.hostname === "localhost") {
+      try {
+        const response = await fetch("/api/devserver", { signal: AbortSignal.timeout(1500) });
+        if (response.ok) localConfigServer = (await response.json()).localConfigServer === true;
+      } catch (_) { /* Other local static servers retain the download workflow. */ }
     }
-    if (!response.ok) {
-      throw new Error("HTTP " + response.status);
+    let configuration;
+    try {
+      const response = await fetch("./config.json", { cache: "no-store", signal: AbortSignal.timeout(3000) });
+      if (!response.ok) throw new Error("HTTP " + response.status);
+      configuration = await response.json();
+    } catch (error) {
+      try { configuration = JSON.parse(localStorage.getItem("servoPreviewConfig")); } catch (_) { /* No cached config. */ }
+      if (!configuration) throw error;
     }
-    const configuration = await response.json();
-    if (!Array.isArray(configuration.servos) ||
-      configuration.servos.length < 1 || configuration.servos.length > 20 ||
-      configuration.servos.some(servo => typeof servo.name !== "string")) {
-      throw new Error("config.json must define between 1 and 20 named servos.");
+    if (!Array.isArray(configuration.components) || configuration.components.length > 60 ||
+        configuration.components.some(component => !["Servo", "U Bracket Short", "U Bracket Long", "Null"].includes(component.objectType ?? "Servo"))) {
+      throw new Error("Config must contain at most 60 components of type Servo, U Bracket Short, U Bracket Long or Null.");
     }
-    initializeServoControls(configuration.servos);
+    const servoConfigurations = configuration.components.filter(component => (component.objectType ?? "Servo") === "Servo");
+    if (!Array.isArray(configuration.components) ||
+      servoConfigurations.length < 1 || servoConfigurations.length > 20 ||
+      servoConfigurations.some(servo =>
+        typeof servo.name !== "string" ||
+        (servo.continuous !== undefined && typeof servo.continuous !== "boolean") ||
+        (servo.initialMotionMode !== undefined &&
+          servo.initialMotionMode !== "immediate" &&
+          servo.initialMotionMode !== "smooth"))) {
+      throw new Error(
+        "config.json components must define 1-20 named servos and use an optional initialMotionMode of \"immediate\" or \"smooth\".");
+    }
+    const outputs = new Map();
+    servoConfigurations.forEach(servo => {
+      const key = Number(servo.address) + ":" + servo.channel;
+      if (outputs.has(key)) {
+        throw new Error(outputs.get(key) + " and " + servo.name +
+          " share PCA9685 address " + servo.address + ", channel " + servo.channel + ". Use a unique output for each servo.");
+      }
+      outputs.set(key, servo.name);
+    });
+    try { localStorage.setItem("servoPreviewConfig", JSON.stringify(configuration)); } catch (_) { /* Storage may be disabled. */ }
+    controllerConfiguration = configuration;
+    initializeServoControls(servoConfigurations);
+    initializeServoPreview(configuration.components, configuration);
+    renderSequence();
+    if (localConfigServer) {
+      setOfflineSimulation(true);
+      document.getElementById("previewOffline").disabled = true;
+      setText("connection", "Local setup — Save config writes data/config.json on this PC.");
+      selectTab(1);
+      sequenceLoaded = false;
+      updateSequencerControls();
+      try { await loadSequence(); }
+      catch (error) {
+        setText("sequencerStatus", "Could not load local sequence");
+        setText("sequencerError", error.message);
+      }
+      return;
+    }
+    try {
+      await loadSequence();
+    } catch (error) {
+      setText("sequencerStatus", "Could not load saved sequence");
+      setText("sequencerError", error.message);
+      renderSequence();
+    }
     await refresh();
     await refreshLog();
     setInterval(refresh, 1000);
@@ -367,5 +1148,1027 @@ async function start() {
     setText("macroError", error.message);
   }
 }
+
+// Simulation shares the command path, but never posts requests to the device.
+function setOfflineSimulation(enabled) {
+  if (offlineSimulation === enabled) return;
+  stopSweep();
+  stopSequence();
+  commandModeRevision += 1;
+  offlineSimulation = enabled;
+  document.getElementById("rebootButton").disabled = enabled || controllerRebooting;
+  document.getElementById("previewOffline").checked = enabled;
+  servoControls.forEach((control, index) => {
+    clearTimeout(control.timer);
+    control.timer = null;
+    control.pendingCommand = null;
+    control.commandedMotion = null;
+    control.ready = enabled;
+    if (servoPreview) {
+      const node = servoPreview.servoNodes[index];
+      node.motion = null;
+      node.ready = enabled;
+      node.outputEnabled = control.outputEnabled;
+      node.enabled = !control.muted;
+      control.slider.value = node.angle;
+    }
+    syncServoPower(control);
+    setText("servoStatus" + control.channel, enabled ? "Simulated" : "Connecting");
+    setText("pulse" + control.channel, "�");
+  });
+  if (enabled) sequenceLoaded = true;
+  setServoPlaybackLock(false);
+  updateSequencerControls();
+  setText("connection", enabled ? "Offline simulation" : "Connecting to device�");
+  setText("previewStatus", enabled ? "Offline simulation � controls update this view only." : "Waiting for device angles.");
+  drawServoPreview();
+  if (!enabled) refresh();
+}
+
+function simulateServoRequest(control, request) {
+  if (!servoPreview) return;
+  const node = servoPreview.servoNodes[control.channel - 1];
+  if (node.continuous) tickServoSimulation();
+  if (request.outputEnabled !== undefined) {
+    node.outputEnabled = request.outputEnabled === "1";
+    if (!node.outputEnabled) node.motion = null;
+  }
+  if (request.enabled !== undefined) {
+    node.enabled = request.enabled === "1";
+    if (!node.enabled) node.motion = null;
+  }
+  if (request.angle !== undefined && node.outputEnabled && node.enabled) {
+    const target = Math.max(0, Math.min(180, Number(request.angle)));
+    const smooth = request.smooth === "1";
+    const multiplier = request.speed === "L" ? 4 : request.speed === "M" ? 2 : 1;
+    const fullRangeDuration = smooth ? 1000 * multiplier * 1.5 : 500;
+    const duration = Math.max(50, Math.ceil(Math.abs(target - node.angle) * fullRangeDuration / (180 * (Number(request.playbackRate) || 1))));
+    node.motion = target === node.angle || (node.continuous && !smooth) ? null : { start: node.angle, target, duration, smooth, at: performance.now() };
+    if (!node.motion) node.angle = target;
+  }
+  tickServoSimulation();
+}
+
+function tickServoSimulation() {
+  if (!servoPreview) return;
+  cancelAnimationFrame(servoPreview.frame);
+  const now = performance.now();
+  const elapsed = servoPreview.animationAt === undefined ? 0 : Math.min(0.25, (now - servoPreview.animationAt) / 1000);
+  servoPreview.animationAt = now;
+  let moving = false;
+  servoPreview.servoNodes.forEach((node, index) => {
+    if (offlineSimulation && node.motion) {
+      const motion = node.motion;
+      const t = Math.min(1, (performance.now() - motion.at) / motion.duration);
+      const progress = motion.smooth ? t * t * (3 - 2 * t) : t;
+      node.angle = motion.start + (motion.target - motion.start) * progress;
+      if (t === 1) node.motion = null;
+      else moving = true;
+    }
+    if (node.continuous && node.ready && node.enabled && node.outputEnabled && Math.abs(node.angle - 90) > 0.001) {
+      // Approximate visual speed: 60 RPM at full command, independent of load.
+      node.spinAngle = ((node.spinAngle + (node.angle - 90) / 90 * 360 * elapsed) % 360 + 360) % 360;
+      moving = true;
+    }
+    if (offlineSimulation) setText("angle" + (index + 1), servoCommandText(node, node.angle));
+  });
+  drawServoPreview();
+  if (moving) servoPreview.frame = requestAnimationFrame(tickServoSimulation);
+}
+
+// Small software 3D renderer: local assets only, no GPU/library dependency.
+let servoPreview = null;
+function loadPreviewCamera() {
+  try {
+    const camera = JSON.parse(localStorage.getItem("servoPreviewCamera"));
+    if (!camera || ![camera.yaw, camera.pitch, camera.zoom].every(Number.isFinite)) return {};
+    return { yaw: camera.yaw, pitch: clampPreviewPitch(camera.pitch),
+      zoom: Math.max(0.2, Math.min(5, camera.zoom)),
+      panX: Number.isFinite(camera.panX) ? camera.panX : 0,
+      panY: Number.isFinite(camera.panY) ? camera.panY : 0,
+      panZ: Number.isFinite(camera.panZ) ? camera.panZ : 0, perspective: camera.perspective === true };
+  } catch (_) {
+    return {};
+  }
+}
+
+function savePreviewCamera() {
+  if (!servoPreview) return;
+  const { yaw, pitch, zoom, panX, panY, panZ, perspective } = servoPreview;
+  try { localStorage.setItem("servoPreviewCamera", JSON.stringify({ yaw, pitch, zoom, panX, panY, panZ, perspective })); }
+  catch (_) { /* Camera controls still work when browser storage is unavailable. */ }
+}
+
+function initializeServoPreview(configurations, configuration = { components: configurations }) {
+  const canvas = document.getElementById("servoScene");
+  const button = document.getElementById("previewToggle");
+  try {
+    const vector = (value, fallback) => {
+      if (value === undefined) return fallback;
+      if (!value || !["x", "y", "z"].every(axis => Number.isFinite(value[axis]))) {
+        throw new Error("Position and rotation require finite x, y and z numbers.");
+      }
+      return [value.x, value.y, value.z];
+    };
+    const servoNames = new Map();
+    configurations.forEach((config, index) => {
+      if (typeof config.name !== "string" || !config.name.trim()) throw new Error("Each component requires a name.");
+      if (servoNames.has(config.name)) throw new Error("Component names must be unique for parent references.");
+      servoNames.set(config.name, index + 1);
+    });
+    const nodes = configurations.map((config, index) => {
+      const parentName = config.parent === undefined ? null : config.parent;
+      if (parentName !== null && (typeof parentName !== "string" ||
+          !servoNames.has(parentName) || parentName === config.name)) {
+        throw new Error("Parent must be null or another component's exact name.");
+      }
+      // Resolve names once; rendering and cycle checks use internal node indices.
+      const parent = parentName === null ? null : servoNames.get(parentName);
+      const objectType = config.objectType ?? "Servo";
+      if (!["Servo", "U Bracket Short", "U Bracket Long", "Null"].includes(objectType)) throw new Error("Unknown component objectType.");
+      const model = config.model === undefined ? "standard" : config.model;
+      if (objectType === "Servo" && !["standard", "micro"].includes(model)) throw new Error("Model must be standard or micro.");
+      return { name: config.name, originalName: config.name, parent, model, objectType, continuous: config.continuous === true, spinAngle: 90,
+        position: vector(config.position, [(index - (configurations.length - 1) / 2) * 65, 0, 0]),
+        rotation: vector(config.rotation, [0, 0, 0]), angle: config.startupAngle ?? 90,
+        ready: false, outputEnabled: false, enabled: true };
+    });
+    nodes.forEach((node, index) => {
+      const seen = new Set([index + 1]);
+      for (let parent = node.parent; parent !== null; parent = nodes[parent - 1].parent) {
+        if (seen.has(parent)) throw new Error("Servo parents must not form a cycle.");
+        seen.add(parent);
+      }
+    });
+    servoPreview = { nodes, servoNodes: nodes.filter(node => node.objectType === "Servo"), canvas, yaw: -0.6, pitch: 0.45, zoom: 1, panX: 0, panY: 0, panZ: 0, active: true, frame: 0, selected: null, perspective: false, editing: false, showLabels: false, configuration };
+    Object.assign(servoPreview, loadPreviewCamera());
+    updatePreviewProjectionButton();
+    previewReady = true;
+    servoPreview.savedNames = configurations.map(component => component.name);
+    initializePreviewPlacementControls();
+    document.getElementById("previewLabels").addEventListener("change", event => {
+      servoPreview.showLabels = event.target.checked;
+      drawServoPreview();
+    });
+    document.getElementById("previewSave").addEventListener("click", savePreviewConfiguration);
+    document.getElementById("previewEdit").textContent = "Open Setup";
+    document.getElementById("previewEdit").addEventListener("click", () => selectTab(3));
+    document.getElementById("previewOffline").addEventListener("change", event => setOfflineSimulation(event.target.checked));
+    const draw = () => {
+      savePreviewCamera();
+      drawServoPreview();
+    };
+    button.addEventListener("click", () => {
+      servoPreview.active = !servoPreview.active;
+      document.getElementById("previewPanel").hidden = !servoPreview.active;
+      ["mixerPanel", "servoSettingsPanel"].forEach(id => {
+        document.getElementById(id).classList.toggle("preview-hidden", !servoPreview.active);
+      });
+      button.setAttribute("aria-expanded", String(servoPreview.active));
+      button.textContent = servoPreview.active ? "Deactivate 3D view" : "Activate 3D view";
+      draw();
+    });
+    document.getElementById("previewProjection").addEventListener("click", () => {
+      servoPreview.perspective = !servoPreview.perspective;
+      updatePreviewProjectionButton();
+      draw();
+    });
+    document.getElementById("previewReset").addEventListener("click", () => {
+      Object.assign(servoPreview, { yaw: -0.6, pitch: 0.45, zoom: 1, panX: 0, panY: 0, panZ: 0 }); draw();
+    });
+    document.getElementById("previewCameraViews").addEventListener("click", event => {
+      const preset = event.target.closest("button[data-view]")?.dataset.view;
+      const views = {
+        left: [-Math.PI / 2, 0], right: [Math.PI / 2, 0],
+        front: [0, 0], back: [Math.PI, 0],
+        top: [0, Math.PI / 2], bottom: [0, -Math.PI / 2]
+      };
+      if (!views[preset]) return;
+      [servoPreview.yaw, servoPreview.pitch] = views[preset];
+      draw();
+    });
+    let drag = null;
+    canvas.addEventListener("contextmenu", event => event.preventDefault());
+    canvas.addEventListener("pointerdown", event => {
+      if (drag || (event.button !== 0 && event.button !== 2)) return;
+      event.preventDefault();
+      drag = { x: event.clientX, y: event.clientY, pan: event.button === 2, pointerId: event.pointerId };
+      canvas.setPointerCapture(event.pointerId);
+    });
+    canvas.addEventListener("pointermove", event => {
+      if (!drag || drag.pointerId !== event.pointerId) return;
+      const dx = event.clientX - drag.x, dy = event.clientY - drag.y;
+      if (drag.pan) {
+        panPreviewFloor(dx, dy);
+      } else {
+        servoPreview.yaw += dx * 0.01;
+        servoPreview.pitch = clampPreviewPitch(servoPreview.pitch + dy * 0.01);
+      }
+      drag.x = event.clientX; drag.y = event.clientY;
+      draw();
+    });
+    ["pointerup", "pointercancel", "lostpointercapture"].forEach(type => canvas.addEventListener(type, event => {
+      if (drag && drag.pointerId === event.pointerId) drag = null;
+    }));
+    canvas.addEventListener("wheel", event => {
+      event.preventDefault(); servoPreview.zoom = Math.max(0.2, Math.min(5, servoPreview.zoom * Math.exp(-event.deltaY * 0.001))); draw();
+    }, { passive: false });
+    canvas.addEventListener("keydown", event => {
+      if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "+", "=", "-"].includes(event.key)) return;
+      event.preventDefault();
+      if (event.key === "ArrowLeft") servoPreview.yaw -= 0.1;
+      if (event.key === "ArrowRight") servoPreview.yaw += 0.1;
+      if (event.key === "ArrowUp") servoPreview.pitch -= 0.1;
+      if (event.key === "ArrowDown") servoPreview.pitch += 0.1;
+      servoPreview.pitch = clampPreviewPitch(servoPreview.pitch);
+      if (["+", "="].includes(event.key)) servoPreview.zoom *= 1.1;
+      if (event.key === "-") servoPreview.zoom /= 1.1;
+      servoPreview.zoom = Math.max(0.2, Math.min(5, servoPreview.zoom)); draw();
+    });
+    new ResizeObserver(draw).observe(canvas);
+  } catch (error) {
+    servoPreview = null; button.disabled = true;
+    document.getElementById("previewEdit").disabled = true;
+    document.getElementById("previewSave").disabled = true;
+    button.textContent = "3D configuration error: " + error.message;
+  }
+}
+
+function previewConfigurationSnapshot() {
+  const configuration = JSON.parse(JSON.stringify(servoPreview.configuration));
+  servoPreview.nodes.forEach((node, index) => {
+    const vector = values => ({ x: values[0], y: values[1], z: values[2] });
+    configuration.components[index].name = node.name;
+    configuration.components[index].parent = node.parent === null ? null : servoPreview.nodes[node.parent - 1].name;
+    configuration.components[index].position = vector(node.position);
+    configuration.components[index].rotation = vector(node.rotation);
+  });
+  return configuration;
+}
+
+async function saveLocalConfiguration(configuration) {
+  const originalNames = servoPreview?.savedNames ?? controllerConfiguration.components.map(component => component.name);
+  const response = await fetch("/api/config/local", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ configuration, originalNames })
+  });
+  const result = await response.text();
+  if (!response.ok) throw new Error(result || "HTTP " + response.status);
+  return result;
+}
+
+async function savePreviewConfiguration() {
+  if (controllerRebooting) return;
+  if (!servoPreview || !servoPreview.editing) return;
+  const button = document.getElementById("previewSave");
+  if (button.disabled) return;
+  if (!commitPreviewComponentName()) return;
+  const configuration = previewConfigurationSnapshot();
+  const controls = Array.from(document.querySelectorAll("#setupPanel button, #setupPanel input, #setupPanel select"))
+    .map(control => ({ control, disabled: control.disabled }));
+  controls.forEach(({ control }) => { control.disabled = true; });
+  button.disabled = true;
+  document.getElementById("setupSelectedName").contentEditable = "false";
+  setText("previewSaveStatus", "Saving config...");
+  try {
+    if (localConfigServer) {
+      setText("previewSaveStatus", await saveLocalConfiguration(configuration));
+    } else if (offlineSimulation) {
+      const url = URL.createObjectURL(new Blob([JSON.stringify(configuration, null, 2) + "\n"], { type: "application/json" }));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "config.json";
+      document.body.append(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setText("previewSaveStatus", "Config downloaded. Replace data/config.json with this file to keep the layout. Device config was not updated.");
+    } else {
+      const placements = configuration.components.map((component, index) => ({ ...component, originalName: servoPreview.nodes[index].originalName }));
+      const response = await fetch("/api/config/preview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ components: placements, originalNames: servoPreview.savedNames })
+      });
+      const result = await response.text();
+      if (!response.ok) throw new Error(result || "HTTP " + response.status);
+      setText("previewSaveStatus", "Config saved on controller. Restart and reload to apply changes to the servo list.");
+    }
+    servoPreview.nodes.forEach(node => { node.originalName = node.name; });
+    servoPreview.savedNames = configuration.components.map(component => component.name);
+    servoPreview.configuration = configuration;
+    try { localStorage.setItem("servoPreviewConfig", JSON.stringify(configuration)); } catch (_) { /* Storage may be disabled. */ }
+  } catch (error) {
+    setText("previewSaveStatus", "Save failed: " + error.message);
+  } finally {
+    document.getElementById("setupSelectedName").contentEditable = servoPreview.nodes[servoPreview.selected] ? "plaintext-only" : "false";
+    controls.forEach(({ control, disabled }) => { control.disabled = disabled; });
+    button.disabled = false;
+  }
+}
+
+function initializePreviewPlacementControls() {
+  const selection = document.getElementById("previewServoSelection");
+  selection.replaceChildren();
+  const rootItem = makeElement("li");
+  const rootTarget = makeElement("button", "tree-root-target", "Root (drop here to detach)");
+  rootTarget.type = "button";
+  bindPreviewTreeDrop(rootTarget, null);
+  rootItem.append(rootTarget);
+  selection.append(rootItem);
+  const appendChildren = (parent, list) => {
+    servoPreview.nodes.forEach((node, index) => {
+      if (node.parent !== parent) return;
+      const item = makeElement("li");
+      const button = makeElement("button", "", node.name);
+      button.type = "button";
+      button.draggable = true;
+      button.addEventListener("dragstart", event => {
+        if (!servoPreview.editing || document.getElementById("previewSave").disabled) {
+          event.preventDefault(); return;
+        }
+        previewDraggedNode = node;
+        event.dataTransfer.effectAllowed = "move";
+        event.dataTransfer.setData("text/plain", node.name);
+        button.classList.add("tree-dragging");
+      });
+      button.addEventListener("dragend", clearPreviewTreeDrag);
+      bindPreviewTreeDrop(button, index + 1);
+      button.setAttribute("aria-pressed", String(index === servoPreview.selected));
+      button.addEventListener("click", () => {
+        servoPreview.selected = index;
+        initializePreviewPlacementControls();
+        drawServoPreview();
+      });
+      item.append(button);
+      const children = makeElement("ul");
+      appendChildren(index + 1, children);
+      if (children.children.length) item.append(children);
+      list.append(item);
+    });
+  };
+  appendChildren(null, selection);
+  document.getElementById("previewAddComponent").disabled = servoPreview.nodes.length >= 60;
+  updatePreviewAddButton();
+  const selectedNode = servoPreview.nodes[servoPreview.selected];
+  const heading = document.getElementById("setupSelectedName");
+  heading.contentEditable = selectedNode ? "plaintext-only" : "false";
+  if (!selectedNode) {
+    document.getElementById("previewRemove").disabled = true;
+    setText("setupSelectedName", "Select a component");
+    document.getElementById("setupTransforms").replaceChildren();
+    updatePreviewTransform();
+    return;
+  }
+  document.getElementById("previewRemove").disabled = selectedNode.objectType === "Servo" &&
+    servoPreview.nodes.filter(node => node.objectType === "Servo").length <= 1;
+  setText("setupSelectedName", selectedNode.name);
+  const transforms = document.getElementById("setupTransforms");
+  transforms.replaceChildren();
+  ["position", "rotation"].forEach(field => {
+    const group = makeElement("fieldset");
+    group.append(makeElement("legend", "", field === "position" ? "Position (mm)" : "Rotation (degrees)"));
+    ["X", "Y", "Z"].forEach((axis, index) => {
+      const label = makeElement("label", "", axis);
+      const input = makeElement("input");
+      input.type = "number"; input.step = "any"; input.value = selectedNode[field][index];
+      input.addEventListener("change", () => {
+        if (!servoPreview.editing || !input.value || !Number.isFinite(Number(input.value))) {
+          input.value = selectedNode[field][index]; return;
+        }
+        selectedNode[field][index] = Number(input.value);
+        setText("previewSaveStatus", "Unsaved transform changes");
+        updatePreviewTransform(); drawServoPreview();
+      });
+      const control = makeElement("div", "setup-axis-control");
+      const nudgeAxis = index + (field === "rotation" ? 3 : 0);
+      const minus = makeElement("button", "", "-");
+      const plus = makeElement("button", "", "+");
+      [minus, plus].forEach((button, direction) => {
+        button.type = "button";
+        button.setAttribute("aria-label", "Nudge " + (field === "rotation" ? "R" : "") + axis +
+          (direction ? " plus " : " minus ") + (field === "position" ? "5 mm; Shift-click for 1 mm" : "15 degrees; Shift-click for 1 degree"));
+        button.addEventListener("click", event => {
+          const step = event.shiftKey ? 1 : (field === "position" ? 5 : 15);
+          nudgePreviewServo(nudgeAxis, (direction ? 1 : -1) * step);
+        });
+      });
+      label.htmlFor = "setup-" + field + "-" + axis;
+      input.id = label.htmlFor;
+      control.append(minus, input, plus);
+      const row = makeElement("div", "setup-axis-row setup-axis-" + axis.toLowerCase());
+      row.append(label, control);
+      group.append(row);
+    });
+    transforms.append(group);
+  });
+  updatePreviewTransform();
+}
+
+function commitPreviewComponentName() {
+  if (!servoPreview?.editing || document.getElementById("previewSave").disabled) return false;
+  const heading = document.getElementById("setupSelectedName");
+  const index = servoPreview.selected;
+  const node = servoPreview.nodes[index];
+  if (!node) return true;
+  const name = heading.textContent.trim();
+  if (!name || new TextEncoder().encode(name).length > 31 ||
+      servoPreview.nodes.some((other, otherIndex) => otherIndex !== index && other.name === name)) {
+    heading.textContent = node.name;
+    setText("previewSaveStatus", "Name must be unique, nonempty and at most 31 bytes.");
+    return false;
+  }
+  if (name === node.name) { heading.textContent = name; return true; }
+  const oldName = node.name;
+  node.name = name;
+  servoPreview.configuration.components[index].name = name;
+  servoPreview.configuration.components.forEach(component => {
+    if (component.parent === oldName) component.parent = name;
+  });
+  initializePreviewPlacementControls();
+  setText("previewSaveStatus", "Unsaved component name change");
+  drawServoPreview();
+  return true;
+}
+
+document.getElementById("setupSelectedName").addEventListener("blur", commitPreviewComponentName);
+document.getElementById("setupSelectedName").addEventListener("keydown", event => {
+  if (event.key === "Enter") {
+    event.preventDefault(); event.currentTarget.blur();
+  } else if (event.key === "Escape") {
+    event.preventDefault();
+    event.currentTarget.textContent = servoPreview.nodes[servoPreview.selected]?.name ?? "Select a component";
+    event.currentTarget.blur();
+  }
+});
+
+let previewDraggedNode = null;
+
+function canReparentPreviewNode(index, parent) {
+  if (!servoPreview || !Number.isInteger(index) || !servoPreview.nodes[index]) return false;
+  const seen = new Set([index + 1]);
+  for (let ancestor = parent; ancestor !== null; ancestor = servoPreview.nodes[ancestor - 1].parent) {
+    if (!Number.isInteger(ancestor) || !servoPreview.nodes[ancestor - 1] || seen.has(ancestor)) return false;
+    seen.add(ancestor);
+  }
+  return true;
+}
+
+function reparentPreviewNode(index, parent) {
+  if (!servoPreview?.editing || document.getElementById("previewSave").disabled ||
+      !canReparentPreviewNode(index, parent) || servoPreview.nodes[index].parent === parent) return;
+  servoPreview.nodes[index].parent = parent;
+  servoPreview.selected = index;
+  initializePreviewPlacementControls();
+  setText("previewSaveStatus", "Unsaved parent changes");
+  drawServoPreview();
+}
+
+function clearPreviewTreeDrag() {
+  previewDraggedNode = null;
+  document.querySelectorAll(".tree-drop-target, .tree-dragging").forEach(element => {
+    element.classList.remove("tree-drop-target", "tree-dragging");
+  });
+}
+
+function bindPreviewTreeDrop(target, parent) {
+  const canDrop = () => previewDraggedNode !== null && servoPreview?.editing &&
+    !document.getElementById("previewSave").disabled &&
+    canReparentPreviewNode(servoPreview.nodes.indexOf(previewDraggedNode), parent) && previewDraggedNode.parent !== parent;
+  target.addEventListener("dragover", event => {
+    if (!canDrop()) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    target.classList.add("tree-drop-target");
+  });
+  target.addEventListener("dragleave", () => target.classList.remove("tree-drop-target"));
+  target.addEventListener("drop", event => {
+    event.preventDefault();
+    if (canDrop()) reparentPreviewNode(servoPreview.nodes.indexOf(previewDraggedNode), parent);
+    clearPreviewTreeDrag();
+  });
+}
+
+function updatePreviewAddButton() {
+  const choice = document.getElementById("previewAddComponent").value;
+  const isServo = choice === "standard" || choice === "micro";
+  document.getElementById("previewAdd").disabled = !choice || !servoPreview ||
+    servoPreview.nodes.length >= 60 || (isServo && servoPreview.nodes.filter(node => node.objectType === "Servo").length >= 20);
+}
+
+document.getElementById("previewAddComponent").addEventListener("change", updatePreviewAddButton);
+document.getElementById("previewAdd").addEventListener("click", () => {
+  const choice = document.getElementById("previewAddComponent").value;
+  if (!choice || !servoPreview?.editing || servoPreview.nodes.length >= 60) return;
+  const isServo = choice === "standard" || choice === "micro";
+  const components = servoPreview.configuration.components;
+  if (isServo && servoPreview.nodes.filter(node => node.objectType === "Servo").length >= 20) {
+    setText("previewSaveStatus", "A maximum of 20 servos is supported."); return;
+  }
+  const objectType = isServo ? "Servo" : choice;
+  let suffix = 1;
+  while (components.some(component => component.name === objectType + " " + suffix) ||
+      servoPreview.savedNames.includes(objectType + " " + suffix)) suffix++;
+  const component = { name: objectType + " " + suffix, objectType, parent: null,
+    position: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 } };
+  if (isServo) {
+    const used = new Set(components.filter(c => (c.objectType ?? "Servo") === "Servo").map(c => Number(c.address) + ":" + c.channel));
+    let address = Number(servoPreview.configuration.servoController?.address ?? "0x40"), channel = 0;
+    while (used.has(address + ":" + channel)) { if (++channel === 16) { channel = 0; address++; } }
+    if (address > 0x77) { setText("previewSaveStatus", "No available servo output."); return; }
+    Object.assign(component, { model: choice, type: choice === "micro" ? "MicroServo 9g" : "TD-7120",
+      address: "0x" + address.toString(16), channel, enabled: false, reversed: false, continuous: false,
+      initialMotionMode: "immediate", startupAngle: 90, minAngle: 0, maxAngle: 180,
+      minPulseMicroseconds: 500, maxPulseMicroseconds: 2500 });
+  }
+  components.push(component);
+  const node = { ...component, originalName: null, parent: null, position: [0, 0, 0], rotation: [0, 0, 0],
+    spinAngle: 90, angle: 90, ready: false, outputEnabled: false, enabled: false };
+  servoPreview.nodes.push(node);
+  if (isServo) servoPreview.servoNodes.push(node);
+  servoPreview.selected = servoPreview.nodes.length - 1;
+
+  initializePreviewPlacementControls();
+  setText("previewSaveStatus", "Component added. Press Save config to keep changes." + (isServo ? " New servos are disabled; configure their output in Servo settings after restart." : ""));
+  drawServoPreview();
+});
+
+document.getElementById("previewRemove").addEventListener("click", () => {
+  if (!servoPreview?.editing) return;
+  const index = servoPreview.selected;
+  const removed = servoPreview.nodes[index];
+  if (!removed) return;
+  if (removed.objectType === "Servo" && servoPreview.nodes.filter(node => node.objectType === "Servo").length <= 1) return;
+  const removedParent = removed.parent;
+  servoPreview.nodes.forEach(node => {
+    if (node.parent === index + 1) node.parent = removedParent;
+    if (node.parent !== null && node.parent > index + 1) node.parent--;
+  });
+  servoPreview.nodes.splice(index, 1);
+  servoPreview.configuration.components.splice(index, 1);
+  // Keep the runtime servo mapping intact until restart; setup edits must not reroute mixer commands.
+  servoPreview.selected = null;
+  initializePreviewPlacementControls();
+  setText("previewSaveStatus", "Component removed. Press Save config to keep changes.");
+  drawServoPreview();
+});
+
+function nudgePreviewServo(axis, amount) {
+  if (!servoPreview || !servoPreview.editing || !Number.isInteger(axis) || axis < 0 || axis > 5 || !Number.isFinite(amount)) return;
+  const node = servoPreview.nodes[servoPreview.selected];
+  if (!node) return;
+  const vector = axis < 3 ? node.position : node.rotation;
+  vector[axis % 3] += amount;
+  setText("previewSaveStatus", "Unsaved placement changes");
+  initializePreviewPlacementControls();
+  drawServoPreview();
+}
+
+function updatePreviewTransform() {
+  if (!servoPreview) return;
+  const node = servoPreview.nodes[servoPreview.selected];
+  if (!node) { setText("previewTransform", ""); return; }
+  const format = value => Number(value.toFixed(2));
+  setText("previewTransform", node.name + " (local)\n" +
+    node.position.map((value, axis) => ["X", "Y", "Z"][axis] + " " + format(value)).join("  ") + " mm\n" +
+    node.rotation.map((value, axis) => ["RX", "RY", "RZ"][axis] + " " + format(value)).join("  ") + " deg");
+}
+
+function updateServoPreview(servos) {
+  if (!servoPreview || offlineSimulation) return;
+  if (servoPreview.servoNodes.some(node => node.continuous)) tickServoSimulation();
+  servoPreview.servoNodes.forEach((node, index) => {
+    const state = servos.find(servo => servo.id === index + 1);
+    node.ready = !!state && state.ready;
+    if (state) {
+      if (Number.isFinite(state.angleDegrees)) node.angle = state.angleDegrees;
+      node.outputEnabled = state.outputEnabled !== false;
+      node.enabled = state.enabled !== false;
+    }
+  });
+  setText("previewStatus", "Device commands updated: " + new Date().toLocaleTimeString());
+  tickServoSimulation();
+}
+
+function rotateServoPoint(point, rotation) {
+  let [x, y, z] = point;
+  const [a, b, c] = rotation.map(degrees => degrees * Math.PI / 180);
+  [y, z] = [y * Math.cos(a) - z * Math.sin(a), y * Math.sin(a) + z * Math.cos(a)];
+  [x, z] = [x * Math.cos(b) + z * Math.sin(b), -x * Math.sin(b) + z * Math.cos(b)];
+  return [x * Math.cos(c) - y * Math.sin(c), x * Math.sin(c) + y * Math.cos(c), z];
+}
+
+function servoWorldPoint(nodes, index, point, shaft = false) {
+  const node = nodes[index];
+  if (node.objectType === "Servo") {
+    const parent = node.parent === null ? null : nodes[node.parent - 1];
+    const shaftMounted = parent?.objectType === "U Bracket Long";
+    // When the shaft is fixed to the parent, the body turns inversely around it.
+    const poseAngle = node.continuous ? node.spinAngle : node.angle;
+    const angle = shaftMounted ? (shaft ? 0 : 90 - poseAngle) : (shaft ? poseAngle - 90 : 0);
+    point = rotateServoPoint(point, [0, angle, 0]);
+  }
+  point = rotateServoPoint(point, node.rotation).map((value, axis) => value + node.position[axis]);
+  if (node.parent === null) return point;
+  const parent = nodes[node.parent - 1];
+  const parentShaftMounted = parent.objectType === "Servo" && parent.parent !== null &&
+    nodes[parent.parent - 1].objectType === "U Bracket Long";
+  // Servo children follow the parent's moving side; brackets retain their mount type.
+  const attachToShaft = node.objectType === "U Bracket Long" ||
+    (node.objectType === "Servo" && !parentShaftMounted);
+  return servoWorldPoint(nodes, node.parent - 1, point, attachToShaft);
+}
+
+function clampPreviewPitch(pitch) {
+  // Include exact side, top and bottom views.
+  return Math.max(-Math.PI / 2, Math.min(Math.PI / 2, pitch));
+}
+
+function previewCameraPoint(point, yaw, pitch) {
+  const degrees = 180 / Math.PI;
+  // World Y orbit first, then camera elevation: yaw must not tilt the floor.
+  const orbit = rotateServoPoint(point, [0, yaw * degrees, 0]);
+  return rotateServoPoint(orbit, [clampPreviewPitch(pitch) * degrees, 0, 0]);
+}
+
+function panPreviewFloor(dx, dy) {
+  if (!servoPreview) return;
+  const { canvas, yaw, pitch, zoom } = servoPreview;
+  const scale = Math.min(canvas.clientWidth, canvas.clientHeight) / 400 * zoom;
+  if (scale <= 0) return;
+  // Invert the floor's screen projection so the grabbed ground follows the mouse.
+  const across = -dx / scale;
+  const elevation = Math.sin(clampPreviewPitch(pitch));
+  // At the horizon, pan vertically rather than invert the edge-on floor.
+  const forward = Math.abs(elevation) < 0.05 ? 0 : -dy / (scale * elevation);
+  if (Math.abs(elevation) < 0.05) servoPreview.panY += dy / scale;
+  servoPreview.panX += Math.cos(yaw) * across - Math.sin(yaw) * forward;
+  servoPreview.panZ += Math.sin(yaw) * across + Math.cos(yaw) * forward;
+}
+
+function updatePreviewProjectionButton() {
+  const button = document.getElementById("previewProjection");
+  button.textContent = servoPreview.perspective ? "Perspective" : "Orthographic";
+  button.setAttribute("aria-pressed", String(servoPreview.perspective));
+}
+
+function projectPreviewPoint(point, width, height, scale, perspective) {
+  const factor = perspective ? 1000 / (1000 - point[2]) : 1;
+  return [width / 2 + point[0] * scale * factor, height / 2 - point[1] * scale * factor,
+    perspective ? 1000 * (factor - 1) : point[2]];
+}
+
+function clipPreviewNearPlane(points) {
+  const clipped = [];
+  for (let i = 0; i < points.length; i++) {
+    const a = points[i], b = points[(i + 1) % points.length];
+    const insideA = a[2] <= 990, insideB = b[2] <= 990;
+    if (insideA) clipped.push(a);
+    if (insideA !== insideB) {
+      const t = (990 - a[2]) / (b[2] - a[2]);
+      clipped.push(a.map((value, axis) => value + (b[axis] - value) * t));
+    }
+  }
+  return clipped;
+}
+
+function drawSelectedPreviewAxes(ctx, nodes, index, project, muted = false) {
+  if (!nodes[index]) return;
+  const origin = project(servoWorldPoint(nodes, index, [0, 0, 0]));
+  if (!origin.every(Number.isFinite)) return;
+  ctx.save();
+  ctx.font = "bold 11px system-ui";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  const axes = muted ? [["X", "#9b6d6a"], ["Y", "#6f987d"], ["Z", "#6c829f"]] :
+    [["X", "#d9443c"], ["Y", "#42e76a"], ["Z", "#3979df"]];
+  axes.forEach(([label, color], axis) => {
+    const point = [0, 0, 0];
+    point[axis] = muted ? 18 : 25;
+    const end = project(servoWorldPoint(nodes, index, point));
+    const dx = end[0] - origin[0], dy = end[1] - origin[1];
+    const length = Math.hypot(dx, dy);
+    if (!Number.isFinite(length) || length < 1) return;
+    const ux = dx / length, uy = dy / length;
+    ctx.beginPath();
+    ctx.moveTo(origin[0], origin[1]); ctx.lineTo(end[0], end[1]);
+    ctx.moveTo(end[0] - ux * 6 - uy * 3, end[1] - uy * 6 + ux * 3);
+    ctx.lineTo(end[0], end[1]);
+    ctx.lineTo(end[0] - ux * 6 + uy * 3, end[1] - uy * 6 - ux * 3);
+    ctx.strokeStyle = "#0d1822"; ctx.lineWidth = 5; ctx.stroke();
+    ctx.strokeStyle = color; ctx.lineWidth = muted ? 1.5 : 2.5; ctx.stroke();
+    const x = end[0] + ux * 10, y = end[1] + uy * 10;
+    ctx.strokeStyle = "#0d1822"; ctx.lineWidth = 3; ctx.strokeText(label, x, y);
+    ctx.fillStyle = color; ctx.fillText(label, x, y);
+  });
+  ctx.restore();
+}
+
+function drawServoPreview() {
+  if (!servoPreview || !servoPreview.active) return;
+  const { canvas, nodes, yaw, pitch, zoom } = servoPreview;
+  const width = canvas.clientWidth, height = canvas.clientHeight;
+  if (!width || !height) return;
+  const ratio = Math.min(window.devicePixelRatio || 1, 2);
+  canvas.width = Math.round(width * ratio); canvas.height = Math.round(height * ratio);
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+  ctx.scale(ratio, ratio); ctx.fillStyle = "#0d1822"; ctx.fillRect(0, 0, width, height);
+  // User-controlled floor target and fixed span; servo motion never reframes the camera.
+  const center = [servoPreview.panX, servoPreview.panY, servoPreview.panZ];
+  const scale = Math.min(width, height) / 400 * zoom;
+  const cameraPoint = point => previewCameraPoint(point.map((v, axis) => v - center[axis]), yaw, pitch);
+  const projectCamera = point => projectPreviewPoint(point, width, height, scale, servoPreview.perspective);
+  const project = point => {
+    const camera = cameraPoint(point);
+    return servoPreview.perspective && camera[2] > 990 ? [NaN, NaN, NaN] : projectCamera(camera);
+  };
+  const projectPolygon = points => {
+    const camera = points.map(cameraPoint);
+    return (servoPreview.perspective ? clipPreviewNearPlane(camera) : camera).map(projectCamera);
+  };
+  // Floor clears the bracket below a standard servo at the origin.
+  const floorY = -55;
+  const gridExtent = 500;
+  const gridStep = 25;
+  const gridLine = (start, end, color, lineWidth) => {
+    let startCamera = cameraPoint(start), endCamera = cameraPoint(end);
+    if (servoPreview.perspective) {
+      if (startCamera[2] > 990 && endCamera[2] > 990) return;
+      if (startCamera[2] > 990 || endCamera[2] > 990) {
+        const t = (990 - startCamera[2]) / (endCamera[2] - startCamera[2]);
+        const clipped = startCamera.map((value, axis) => value + (endCamera[axis] - value) * t);
+        if (startCamera[2] > 990) startCamera = clipped;
+        else endCamera = clipped;
+      }
+    }
+    const a = projectCamera(startCamera), b = projectCamera(endCamera);
+    ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]);
+    ctx.strokeStyle = color; ctx.lineWidth = lineWidth; ctx.stroke();
+  };
+  for (let offset = -gridExtent; offset <= gridExtent; offset += gridStep) {
+    if (offset === 0) continue;
+    const major = offset % 100 === 0;
+    const color = major ? "#344959" : "#223340";
+    gridLine([offset, floorY, -gridExtent], [offset, floorY, gridExtent], color, major ? 1 : 0.5);
+    gridLine([-gridExtent, floorY, offset], [gridExtent, floorY, offset], color, major ? 1 : 0.5);
+  }
+  gridLine([-gridExtent, floorY, 0], [0, floorY, 0], "#af625d", 1.5);
+  gridLine([0, floorY, 0], [gridExtent, floorY, 0], "#d9443c", 2.5);
+  gridLine([0, floorY, -gridExtent], [0, floorY, 0], "#5d83af", 1.5);
+  gridLine([0, floorY, 0], [0, floorY, gridExtent], "#3979df", 2.5);
+  gridLine([0, -gridExtent, 0], [0, 0, 0], "#79df9b", 1.5);
+  gridLine([0, 0, 0], [0, gridExtent, 0], "#42e76a", 2.5);
+  ctx.lineWidth = 1;
+  const faces = [], labels = [];
+  function box(index, offset, dimensions, color, shaft) {
+    const vertices = Array.from({ length: 8 }, (_, bits) => servoWorldPoint(nodes, index,
+      dimensions.map((size, axis) => offset[axis] + ((bits >> axis) & 1 ? 0.5 : -0.5) * size), shaft));
+    [[0, 1, 3, 2], [4, 6, 7, 5], [0, 4, 5, 1], [2, 3, 7, 6], [0, 2, 6, 4], [1, 5, 7, 3]].forEach(indices => {
+      const points = projectPolygon(indices.map(i => vertices[i]));
+      if (points.length < 3) return;
+      faces.push({ points, depth: points.reduce((sum, p) => sum + p[2], 0) / 4, color, selected: servoPreview.editing && index === servoPreview.selected });
+    });
+  }
+  function cylinder(index, offset, radius, height, color, shaft) {
+    const segments = 16;
+    const rings = [-0.5, 0.5].map(side => Array.from({ length: segments }, (_, i) => {
+      const angle = i * Math.PI * 2 / segments;
+      return servoWorldPoint(nodes, index,
+        [offset[0] + Math.cos(angle) * radius, offset[1] + side * height,
+          offset[2] + Math.sin(angle) * radius], shaft);
+    }));
+    const addFace = vertices => {
+      const points = projectPolygon(vertices);
+      if (points.length < 3) return;
+      faces.push({ points,
+      depth: points.reduce((sum, point) => sum + point[2], 0) / points.length,
+      color, selected: servoPreview.editing && index === servoPreview.selected });
+    };
+    rings.forEach(addFace);
+    for (let i = 0; i < segments; ++i) {
+      const next = (i + 1) % segments;
+      addFace([rings[0][i], rings[0][next], rings[1][next], rings[1][i]]);
+    }
+  }
+  nodes.forEach((node, index) => {
+    if (node.objectType === "Null") return;
+    const drawModel = node.objectType === "U Bracket Short" ? drawUBracketShort :
+      node.objectType === "U Bracket Long" ? drawUBracketLong :
+      node.model === "micro" ? drawMicro9g : drawTD7120;
+    const color = !node.ready ? "#59636d" : !node.outputEnabled ? "#b47c34" : !node.enabled ? "#477caf" : "#269f89";
+    drawModel({
+      box: (...args) => box(index, ...args),
+      cylinder: (...args) => cylinder(index, ...args),
+      color,
+      label: point => {
+        if (!servoPreview.showLabels) return;
+        const suffix = node.objectType === "Servo" ? " \u00b7 " + servoCommandText(node, node.angle) : "";
+        labels.push({ point: project(servoWorldPoint(nodes, index, point)), text: node.name + suffix });
+      }
+    });
+    if (node.objectType === "Servo" && node.continuous) {
+      // A radial marker makes rotation visible on otherwise symmetric shaft wheels.
+      box(index, [5, node.model === "micro" ? 7 : 5, 0], [6, 0.6, 1.5], "#ffe08a", true);
+    }
+  });
+  renderPreviewFaces(ctx, faces, canvas.width, canvas.height, ratio);
+  ctx.font = "12px system-ui"; ctx.textAlign = "center";
+  labels.forEach(({ point, text }) => {
+    if (!point.every(Number.isFinite)) return;
+    ctx.lineWidth = 4; ctx.strokeStyle = "#0d1822"; ctx.strokeText(text, point[0], point[1]);
+    ctx.fillStyle = "#edf5ff"; ctx.fillText(text, point[0], point[1]);
+  });
+  nodes.forEach((node, index) => {
+    if (node.objectType === "Null") drawSelectedPreviewAxes(ctx, nodes, index, project, true);
+  });
+  if (servoPreview.editing && nodes[servoPreview.selected]?.objectType !== "Null") {
+    drawSelectedPreviewAxes(ctx, nodes, servoPreview.selected, project);
+  }
+}
+
+let editedServoName = null;
+let editedServoIndex = -1;
+const servoSettingsFields = [
+  ["name", "Name", "text"], ["type", "Servo hardware type", "text"],
+  ["address", "PCA9685 address (e.g. 0x41)", "text"],
+  ["channel", "Hardware channel (0-15)", "number", 0, 15],
+  ["startupAngle", "Startup command (0-180; continuous: 90 = stop)", "number", 0, 180],
+  ["minPulseMicroseconds", "Minimum pulse (microseconds)", "number", 500, 2500],
+  ["maxPulseMicroseconds", "Maximum pulse (microseconds)", "number", 500, 2500],
+  ["minAngle", "Minimum angle", "number", 0, 180],
+  ["maxAngle", "Maximum angle", "number", 0],
+  ["initialMotionMode", "Initial motion mode", ["immediate", "smooth"]],
+  ["continuous", "Continuous 360-degree servo", "checkbox"],
+  ["enabled", "Enabled", "checkbox"], ["reversed", "Reversed", "checkbox"],
+  ["model", "3D model", ["standard", "micro"]], ["parent", "Parent component", "parent"],
+  ...["position", "rotation"].flatMap(field => ["x", "y", "z"].map(axis =>
+    [field + "." + axis, (field === "position" ? "Position " : "Rotation ") + axis.toUpperCase() +
+      (field === "position" ? " (mm)" : " (degrees)"), "number"]))
+];
+
+function openServoSettings(channel) {
+  if (!controllerConfiguration) return;
+  const config = servoPreview ? previewConfigurationSnapshot() : controllerConfiguration;
+  const servos = config.components.filter(component => (component.objectType ?? "Servo") === "Servo");
+  const servo = servos[channel - 1];
+  if (!servo) return;
+  editedServoIndex = config.components.indexOf(servo);
+  editedServoName = servo.name;
+  const fields = document.getElementById("servoSettingsFields");
+  fields.replaceChildren();
+  servoSettingsFields.forEach(([key, text, type, min, max]) => {
+    const label = makeElement("label", "", text);
+    const input = makeElement(Array.isArray(type) || type === "parent" ? "select" : "input");
+    input.name = key;
+    if (Array.isArray(type) || type === "parent") {
+      const values = type === "parent" ? ["", ...config.components.filter(c => c !== servo).map(c => c.name)] : type;
+      values.forEach(value => {
+        const option = makeElement("option", "", value || "None (root)");
+        option.value = value; input.append(option);
+      });
+    } else {
+      input.type = type;
+      if (type === "number") { input.step = key.includes(".") ? "any" : "1"; }
+      if (min !== undefined) input.min = String(min);
+      if (max !== undefined) input.max = String(max);
+      input.required = type !== "checkbox" && key !== "type";
+      if (key === "name") input.maxLength = 31;
+    }
+    const value = key.split(".").reduce((current, part) => current?.[part], servo);
+    if (type === "checkbox") input.checked = value === true;
+    else input.value = value ?? (key.includes(".") ? 0 : key === "initialMotionMode" ? "immediate" : key === "model" ? "standard" : "");
+    label.append(input); fields.append(label);
+  });
+  setText("servoSettingsTitle", "Settings: " + servo.name);
+  setText("servoSettingsStatus", "");
+  document.getElementById("servoSettingsForm").hidden = false;
+  selectTab(2);
+  document.getElementById("servoSettingsTab").focus();
+}
+
+function editedServoConfiguration(form) {
+  const config = servoPreview ? previewConfigurationSnapshot() : JSON.parse(JSON.stringify(controllerConfiguration));
+  const original = config.components[editedServoIndex];
+  const servo = JSON.parse(JSON.stringify(original));
+  servoSettingsFields.forEach(([key, text, type]) => {
+    const input = form.elements.namedItem(key);
+    const value = type === "checkbox" ? input.checked : type === "number" ? Number(input.value) : input.value;
+    const parts = key.split(".");
+    if (parts.length === 2) { servo[parts[0]] ||= {}; servo[parts[0]][parts[1]] = value; }
+    else servo[key] = key === "parent" && value === "" ? null : value;
+  });
+  if (!servo.name.trim()) throw new Error("Name must not be empty.");
+  if (!/^0x[0-9a-f]+$/i.test(servo.address) || Number(servo.address) < 0x40 || Number(servo.address) > 0x77) throw new Error("Address must be hexadecimal between 0x40 and 0x77.");
+  if (servo.minPulseMicroseconds >= servo.maxPulseMicroseconds) throw new Error("Minimum pulse must be less than maximum pulse.");
+  if (servo.minAngle > servo.maxAngle) throw new Error("Minimum angle must not exceed maximum angle.");
+  config.components[editedServoIndex] = servo;
+  config.components.forEach(component => { if (component.parent === original.name) component.parent = servo.name; });
+  const names = new Map(), outputs = new Set();
+  config.components.forEach(component => {
+    if (names.has(component.name)) throw new Error("Component names must be unique.");
+    names.set(component.name, component);
+    if ((component.objectType ?? "Servo") === "Servo") {
+      const key = Number(component.address) + ":" + component.channel;
+      if (outputs.has(key)) throw new Error("That PCA9685 address/channel is already assigned to another servo.");
+      outputs.add(key);
+    }
+  });
+  config.components.forEach(component => {
+    const seen = new Set([component.name]);
+    for (let parent = component.parent; parent != null; parent = names.get(parent).parent) {
+      if (!names.has(parent) || seen.has(parent)) throw new Error("Parent references must exist and must not form a cycle.");
+      seen.add(parent);
+    }
+  });
+  return { config, servo };
+}
+
+document.getElementById("servoSettingsBack").addEventListener("click", () => selectTab(1));
+document.getElementById("servoSettingsForm").addEventListener("submit", async event => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  if (controllerRebooting || !form.reportValidity()) return;
+  const button = document.getElementById("servoSettingsSave");
+  if (button.disabled) return;
+  try {
+    const { config, servo } = editedServoConfiguration(form);
+    button.disabled = true;
+    setText("servoSettingsStatus", "Saving...");
+    if (localConfigServer) {
+      setText("servoSettingsStatus", await saveLocalConfiguration(config));
+      if (servoPreview) servoPreview.savedNames = config.components.map(component => component.name);
+    } else if (offlineSimulation) {
+      const url = URL.createObjectURL(new Blob([JSON.stringify(config, null, 2) + "\n"], { type: "application/json" }));
+      const link = makeElement("a"); link.href = url; link.download = "config.json";
+      document.body.append(link); link.click(); link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setText("servoSettingsStatus", "Edited config downloaded. Replace data/config.json with this file; the controller was not changed.");
+    } else {
+      const response = await fetch("/api/config/servo", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ originalName: editedServoName, servo }) });
+      const result = await response.text();
+      if (!response.ok) throw new Error(result || "HTTP " + response.status);
+      setText("servoSettingsStatus", "Saved. Restart the controller and reload this page to apply the new settings.");
+    }
+    controllerConfiguration = config;
+    if (servoPreview) servoPreview.configuration = config;
+    editedServoName = servo.name;
+    try { localStorage.setItem("servoPreviewConfig", JSON.stringify(config)); } catch (_) { /* Storage may be disabled. */ }
+  } catch (error) {
+    setText("servoSettingsStatus", "Save failed: " + error.message);
+  } finally { button.disabled = false; }
+});
+
+async function rebootController() {
+  if (controllerRebooting || offlineSimulation) return;
+  const button = document.getElementById("rebootButton");
+  stopSweep();
+  stopSequence();
+  controllerRebooting = true;
+  commandModeRevision += 1;
+  button.disabled = true;
+  button.textContent = "Rebooting...";
+  servoControls.forEach(control => {
+    clearTimeout(control.timer);
+    control.timer = null;
+    control.pendingCommand = null;
+  });
+  setServoPlaybackLock(true);
+  [sweepButton, sweepAllButton, centerButton, allServosOffButton].forEach(item => { item.disabled = true; });
+  setText("connection", "Rebooting controller...");
+  try {
+    // Drain commands already sent before asking the controller to restart.
+    await Promise.allSettled(servoControls.map(control => control.requestQueue));
+    const response = await fetch("/api/reboot", { method: "POST", signal: AbortSignal.timeout(8000) });
+    const message = await response.text();
+    if (!response.ok) throw new Error(message || "HTTP " + response.status);
+    setText("connection", "Waiting for controller to restart...");
+    for (let attempt = 0; attempt < 20; ++attempt) {
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      try {
+        const statusResponse = await fetch("/api/status", { cache: "no-store", signal: AbortSignal.timeout(2000) });
+        if (!statusResponse.ok) continue;
+        const status = await statusResponse.json();
+        const uptime = status.device?.uptimeSeconds;
+        if (Number.isFinite(uptime) && (uptime < 30 || (lastDeviceUptime !== null && uptime < lastDeviceUptime))) {
+          window.location.reload();
+          return;
+        }
+      } catch (_) { /* Wi-Fi and HTTP may be unavailable briefly during restart. */ }
+    }
+    throw new Error("Controller has not returned yet. Reload the page when it is available.");
+  } catch (error) {
+    setText("connection", "Reboot: " + error.message);
+    controllerRebooting = false;
+    button.disabled = offlineSimulation;
+    button.textContent = "Reboot";
+    setServoPlaybackLock(false);
+    [sweepButton, sweepAllButton, centerButton].forEach(item => { item.disabled = false; });
+    syncMasterPower();
+    updateSequencerControls();
+  }
+}
+document.getElementById("rebootButton").addEventListener("click", rebootController);
 
 start();

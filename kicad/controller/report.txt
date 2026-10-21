@@ -1,0 +1,2 @@
+Annotated Olimex_MOD-WIFI-ESP8266-DEV as U1.
+Annotation complete.

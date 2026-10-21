@@ -50,25 +50,33 @@ bool loadServoConfigurations(ServoConfiguration* configurations,
     return false;
   }
 
-  const JsonArrayConst servos = document["servos"].as<JsonArrayConst>();
+  const JsonArrayConst servos = document["components"].as<JsonArrayConst>();
   if (servos.isNull() || servos.size() == 0 ||
-      servos.size() > kMaximumServoCount || servos.size() > capacity) {
-    AppLog::printf("Servo configuration must contain 1-%u entries.\n",
-                   kMaximumServoCount);
+      servos.size() > 60) {
+    AppLog::println("Configuration must contain 1-60 components.");
     return false;
   }
 
   for (JsonObjectConst entry : servos) {
+    const char* objectType = entry["objectType"] | "Servo";
+    if (strcmp(objectType, "U Bracket Short") == 0 || strcmp(objectType, "U Bracket Long") == 0 || strcmp(objectType, "Null") == 0) continue;
+    if (strcmp(objectType, "Servo") != 0 || configurationCount >= capacity || configurationCount >= kMaximumServoCount) {
+      AppLog::println("Invalid component type or too many servo components.");
+      configurationCount = 0;
+      return false;
+    }
     ServoConfiguration candidate;
     const char* name = entry["name"] | "";
     const char* addressText = entry["address"] | "";
     const int channel = entry["channel"] | -1;
+    const int startupAngle = entry["startupAngle"] | -1;
     const int minimumPulse = entry["minPulseMicroseconds"] | -1;
     const int maximumPulse = entry["maxPulseMicroseconds"] | -1;
 
     if (name[0] == '\0' || strlen(name) > 31 ||
         !parseAddress(String(addressText), candidate.address) ||
         channel < 0 || channel > 15 ||
+        startupAngle < 0 || startupAngle > 180 ||
         minimumPulse < 500 || maximumPulse > 2500 ||
         minimumPulse >= maximumPulse) {
       AppLog::printf("Invalid servo configuration at entry %u.\n",
@@ -77,8 +85,15 @@ bool loadServoConfigurations(ServoConfiguration* configurations,
       return false;
     }
 
+    if (!entry["continuous"].isNull() && !entry["continuous"].is<bool>()) {
+      AppLog::println("Servo continuous must be boolean.");
+      configurationCount = 0;
+      return false;
+    }
+    candidate.continuous = entry["continuous"] | false;
     candidate.name = name;
     candidate.channel = static_cast<uint8_t>(channel);
+    candidate.startupAngle = static_cast<uint8_t>(startupAngle);
     candidate.minimumPulseMicroseconds =
         static_cast<uint16_t>(minimumPulse);
     candidate.maximumPulseMicroseconds =
@@ -92,6 +107,7 @@ bool loadServoConfigurations(ServoConfiguration* configurations,
     configurations[configurationCount++] = candidate;
   }
 
+  if (configurationCount == 0) return false;
   AppLog::printf("Loaded %u servo configuration(s).\n", configurationCount);
   return true;
 }

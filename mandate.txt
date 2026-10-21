@@ -1,4 +1,6 @@
 chip: ESP8266EX
+model: ESP8266 ESP-12F TYPE-C
+
 
 the controller is an esp8266 with 0.96"TT oled modules attached.  v2.1.2
 D5=GPIO12=SCL
