@@ -1517,6 +1517,147 @@ function initializeUserCameraViews(configuration) {
   updateUserCameraButtons();
 }
 
+let previewPhysics = null;
+let previewPhysicsEnabled = true;
+let previewPhysicsDebug = false;
+let previewPhysicsFrame = 0;
+let previewPhysicsRun = 0;
+let physicsControlsReady = false;
+
+function collectPreviewPhysicsShapes() {
+  const shapes = [];
+  servoPreview.nodes.forEach((node, index) => {
+    if (node.objectType === "Null") return;
+    const model = node.objectType === "U Bracket Short" ? drawUBracketShort :
+      node.objectType === "U Bracket Long" ? drawUBracketLong : node.model === "micro" ? drawMicro9g : drawTD7120;
+    const add = (kind, offset, dimensions, shaft, radius, height) => {
+      const origin = servoWorldPoint(servoPreview.nodes, index, [0, 0, 0], shaft);
+      const axes = [0, 1, 2].map(axis => servoWorldPoint(servoPreview.nodes, index,
+        [0, 1, 2].map(i => i === axis ? 1 : 0), shaft).map((value, i) => value - origin[i]));
+      shapes.push({ kind, index, shaft: !!shaft, offset: [...offset], center: servoWorldPoint(servoPreview.nodes, index, offset, shaft), axes, dimensions, radius, height });
+    };
+    model({ box: (offset, dimensions, color, shaft) => add("box", offset, dimensions, shaft),
+      cylinder: (offset, radius, height, color, shaft) => add("cylinder", offset, null, shaft, radius, height),
+      color: "#269f89", label() {} });
+  });
+  return shapes;
+}
+
+function collectPreviewPhysicsNodes() {
+  return servoPreview.nodes.map((node, index) => {
+    const pose = shaft => {
+      const center = servoWorldPoint(servoPreview.nodes, index, [0, 0, 0], shaft);
+      const axes = [0, 1, 2].map(axis => servoWorldPoint(servoPreview.nodes, index,
+        [0, 1, 2].map(i => i === axis ? 1 : 0), shaft).map((value, i) => value - center[i]));
+      return { center, axes };
+    };
+    const parent = node.parent === null ? null : servoPreview.nodes[node.parent - 1];
+    const shaftMounted = node.objectType === "Servo" && parent?.objectType === "U Bracket Long";
+    const parentShaftMounted = parent?.objectType === "Servo" && parent.parent !== null &&
+      servoPreview.nodes[parent.parent - 1].objectType === "U Bracket Long";
+    const parentSide = parent?.objectType === "Servo" &&
+      (node.objectType === "U Bracket Long" || (node.objectType === "Servo" && !parentShaftMounted)) ? "shaft" : "body";
+    return { index, parent: node.parent === null ? null : node.parent - 1, parentSide,
+      servo: node.objectType === "Servo", null: node.objectType === "Null", fixedSide: shaftMounted ? "shaft" : "body",
+      constraints: node.objectType === "Null" ? node.constraints : undefined,
+      rotationConstraints: node.objectType === "Null" ? node.rotationConstraints : undefined,
+      body: pose(false), shaft: pose(true), target: (node.angle - 90) * Math.PI / 180,
+      continuous: node.continuous, velocity: (node.angle - 90) / 90 * 2 * Math.PI,
+      enabled: node.outputEnabled && node.enabled };
+  });
+}
+
+function syncPreviewPhysics() {
+  if (!previewPhysics || !servoPreview) return;
+  const topology = servoPreview.nodes.map(node => [node.objectType, node.model, node.parent, ...node.position, ...node.rotation, JSON.stringify(node.constraints || {}), JSON.stringify(node.rotationConstraints || {})].join(":")).join("|");
+  previewPhysics.syncRobot(collectPreviewPhysicsNodes(), collectPreviewPhysicsShapes(), topology);
+}
+
+function updatePhysicsControls() {
+  document.getElementById("previewPhysics").setAttribute("aria-pressed", String(!!previewPhysics && previewPhysicsEnabled));
+  ["physicsDrop", "physicsClear", "physicsDebug", "physicsResetRobot"].forEach(id => {
+    document.getElementById(id).disabled = !previewPhysics || !previewPhysicsEnabled;
+  });
+}
+
+async function initializePreviewPhysics() {
+  if (document.getElementById("previewPhysics").disabled) return;
+  if (!physicsControlsReady) {
+    physicsControlsReady = true;
+    document.getElementById("previewPhysics").addEventListener("click", () => {
+      if (!previewPhysics) { initializePreviewPhysics(); return; }
+      previewPhysicsEnabled = !previewPhysicsEnabled;
+      updatePhysicsControls();
+      setText("physicsStatus", previewPhysicsEnabled ? "Rapier running" : "Rapier paused");
+    });
+    document.getElementById("physicsDrop").addEventListener("click", () => {
+      if (!previewPhysics || !previewPhysicsEnabled) return;
+      syncPreviewPhysics();
+      previewPhysics.dropCube([servoPreview.panX, Math.max(150, servoPreview.panY + 150), servoPreview.panZ]);
+      drawServoPreview();
+    });
+    document.getElementById("physicsResetRobot").addEventListener("click", () => {
+      if (!previewPhysics) return;
+      previewPhysics.resetRobot(); syncPreviewPhysics(); drawServoPreview();
+      setText("physicsStatus", "Robot reset to configured pose; root is free");
+    });
+    document.getElementById("physicsClear").addEventListener("click", () => { previewPhysics?.clear(); drawServoPreview(); });
+    document.getElementById("physicsDebug").addEventListener("click", () => {
+      previewPhysicsDebug = !previewPhysicsDebug;
+      document.getElementById("physicsDebug").setAttribute("aria-pressed", String(previewPhysicsDebug));
+      drawServoPreview();
+    });
+    window.addEventListener("pagehide", () => {
+      previewPhysicsRun++;
+      cancelAnimationFrame(previewPhysicsFrame);
+      previewPhysics?.destroy(); previewPhysics = null;
+      document.getElementById("previewPhysics").disabled = false;
+      updatePhysicsControls();
+    });
+  }
+  const run = ++previewPhysicsRun;
+  const button = document.getElementById("previewPhysics");
+  button.disabled = true;
+  setText("physicsStatus", "Loading Rapier from CDN…");
+  let timeout;
+  try {
+    const RAPIER = await Promise.race([GhostPhysics.load(), new Promise((_, reject) => {
+      timeout = setTimeout(() => reject(new Error("CDN timed out; click Physics to retry")), 20000);
+    })]);
+    if (run !== previewPhysicsRun) return;
+    previewPhysics = GhostPhysics.create(RAPIER);
+    previewPhysicsEnabled = true;
+    syncPreviewPhysics();
+    setText("physicsStatus", "Rapier ready — robot is free-standing; no root is pinned");
+    let previousTime = null;
+    const frame = time => {
+      if (run !== previewPhysicsRun) return;
+      previewPhysicsFrame = requestAnimationFrame(frame);
+      if (!previewPhysicsEnabled || !servoPreview?.active || document.hidden || !servoPreview.canvas.getClientRects().length) {
+        previousTime = null; return;
+      }
+      try {
+        syncPreviewPhysics();
+        previewPhysics.advance(previousTime === null ? 0 : (time - previousTime) / 1000);
+        previousTime = time;
+        drawServoPreview();
+      } catch (error) {
+        previewPhysicsEnabled = false; updatePhysicsControls();
+        setText("physicsStatus", "Rapier paused: " + error.message);
+      }
+    };
+    previewPhysicsFrame = requestAnimationFrame(frame);
+  } catch (error) {
+    if (run === previewPhysicsRun) {
+      previewPhysics?.destroy(); previewPhysics = null;
+      setText("physicsStatus", "Rapier unavailable: " + error.message + ". Click Physics to retry.");
+    }
+  } finally {
+    clearTimeout(timeout);
+    if (run === previewPhysicsRun) { button.disabled = false; updatePhysicsControls(); }
+  }
+}
+
 function initializeServoPreview(configurations, configuration = { components: configurations }) {
   const canvas = document.getElementById("servoScene");
   const button = document.getElementById("previewToggle");
@@ -1544,9 +1685,14 @@ function initializeServoPreview(configurations, configuration = { components: co
       const parent = parentName === null ? null : servoNames.get(parentName);
       const objectType = config.objectType ?? "Servo";
       if (!["Servo", "U Bracket Short", "U Bracket Long", "Null"].includes(objectType)) throw new Error("Unknown component objectType.");
+      if (config.constraints !== undefined && (objectType !== "Null" || !config.constraints || typeof config.constraints !== "object" || Array.isArray(config.constraints) ||
+          Object.entries(config.constraints).some(([axis, limit]) => !["x", "y", "z"].includes(axis) || !limit || typeof limit.enabled !== "boolean" ||
+            !Number.isFinite(limit.min) || !Number.isFinite(limit.max) || limit.min > limit.max))) throw new Error("Invalid Null axis constraints.");
+      if (config.rotationConstraints !== undefined && (objectType !== "Null" || !config.rotationConstraints || typeof config.rotationConstraints !== "object" || Array.isArray(config.rotationConstraints) ||
+          Object.entries(config.rotationConstraints).some(([axis, locked]) => !["x", "y", "z"].includes(axis) || typeof locked !== "boolean"))) throw new Error("Invalid Null rotation constraints.");
       const model = config.model === undefined ? "standard" : config.model;
       if (objectType === "Servo" && !["standard", "micro"].includes(model)) throw new Error("Model must be standard or micro.");
-      return { name: config.name, originalName: config.name, parent, model, objectType, continuous: config.continuous === true, spinAngle: 90,
+      return { name: config.name, originalName: config.name, parent, model, objectType, constraints: config.constraints ? JSON.parse(JSON.stringify(config.constraints)) : undefined, rotationConstraints: config.rotationConstraints ? { ...config.rotationConstraints } : undefined, continuous: config.continuous === true, spinAngle: 90,
         position: vector(config.position, [(index - (configurations.length - 1) / 2) * 65, 0, 0]),
         rotation: vector(config.rotation, [0, 0, 0]), angle: config.startupAngle ?? 90,
         ready: false, outputEnabled: false, enabled: true };
@@ -1657,6 +1803,7 @@ function initializeServoPreview(configurations, configuration = { components: co
       servoPreview.zoom = Math.max(0.2, Math.min(5, servoPreview.zoom)); draw();
     });
     new ResizeObserver(draw).observe(canvas);
+    initializePreviewPhysics();
     if (webcam.active === true) startWebcam();
   } catch (error) {
     servoPreview = null; button.disabled = true;
@@ -1674,6 +1821,8 @@ function previewConfigurationSnapshot() {
     configuration.components[index].parent = node.parent === null ? null : servoPreview.nodes[node.parent - 1].name;
     configuration.components[index].position = vector(node.position);
     configuration.components[index].rotation = vector(node.rotation);
+    if (node.objectType === "Null" && node.constraints) configuration.components[index].constraints = JSON.parse(JSON.stringify(node.constraints));
+    if (node.objectType === "Null" && node.rotationConstraints) configuration.components[index].rotationConstraints = { ...node.rotationConstraints };
   });
   const { yaw, pitch, roll, zoom, panX, panY, panZ, perspective, showGrid } = servoPreview;
   configuration.camera = { yaw, pitch, roll: roll || 0, zoom, panX, panY, panZ, perspective, showGrid: showGrid !== false,
@@ -1912,6 +2061,62 @@ async function refreshSetupWebcamControls() {
   } catch (error) { setText("webcamStatus", "Could not list webcams: " + error.message); }
 }
 
+function renderNullConstraints(node, host) {
+  const group = makeElement("fieldset", "null-constraints");
+  group.append(makeElement("legend", "", "Physics constraints"));
+  group.append(makeElement("p", "subtle", "World axes. Min/max are offsets in mm from the configured Null position. 0 / 0 holds an axis; unchecked is free. Use the rotation locks below to prevent tipping. Save config to keep changes."));
+  for (const axis of ["x", "y", "z"]) {
+    const stored = node.constraints?.[axis] || { enabled: false, min: 0, max: 0 };
+    const row = makeElement("div", "null-constraint-row");
+    const label = makeElement("label", "null-constraint-toggle", "Constrain " + axis.toUpperCase());
+    const enabled = makeElement("input"); enabled.type = "checkbox"; enabled.checked = stored.enabled === true;
+    label.append(enabled); row.append(label);
+    const inputs = {};
+    for (const bound of ["min", "max"]) {
+      const field = makeElement("label", "", bound === "min" ? "Min (mm)" : "Max (mm)");
+      const input = makeElement("input"); input.type = "number"; input.step = "any";
+      input.value = Number.isFinite(stored[bound]) ? stored[bound] : 0;
+      input.disabled = !enabled.checked;
+      input.setAttribute("aria-label", axis.toUpperCase() + " constraint " + bound + " offset in millimetres");
+      field.append(input); row.append(field); inputs[bound] = input;
+    }
+    const apply = () => {
+      const min = Number(inputs.min.value), max = Number(inputs.max.value);
+      if (inputs.min.value === "" || inputs.max.value === "" || !Number.isFinite(min) || !Number.isFinite(max) || min > max) {
+        const previous = node.constraints?.[axis] || stored;
+        inputs.min.value = previous.min; inputs.max.value = previous.max; enabled.checked = previous.enabled === true;
+        setText("previewSaveStatus", "Constraint minimum must be a finite number no greater than maximum.");
+        return;
+      }
+      node.constraints ||= {};
+      node.constraints[axis] = { enabled: enabled.checked, min, max };
+      inputs.min.disabled = inputs.max.disabled = !enabled.checked;
+      setText("previewSaveStatus", "Unsaved Null constraint changes");
+      if (previewPhysics && previewPhysicsEnabled) syncPreviewPhysics();
+      drawServoPreview();
+    };
+    enabled.addEventListener("change", apply);
+    inputs.min.addEventListener("change", apply); inputs.max.addEventListener("change", apply);
+    group.append(row);
+  }
+  const rotation = makeElement("div", "null-rotation-constraints");
+  rotation.append(makeElement("p", "subtle", "Rotation locks keep the configured orientation on the selected world axes. Lock X and Z to stay upright while allowing yaw and free walking."));
+  for (const axis of ["x", "y", "z"]) {
+    const label = makeElement("label", "null-constraint-toggle", "Lock rotation " + axis.toUpperCase());
+    const input = makeElement("input"); input.type = "checkbox"; input.checked = node.rotationConstraints?.[axis] === true;
+    input.addEventListener("change", () => {
+      node.rotationConstraints ||= {};
+      node.rotationConstraints[axis] = input.checked;
+      setText("previewSaveStatus", "Unsaved Null rotation constraints");
+      if (previewPhysics && previewPhysicsEnabled) syncPreviewPhysics();
+      drawServoPreview();
+    });
+    label.append(input); rotation.append(label);
+  }
+  group.append(rotation);
+  host.append(group);
+}
+
 function initializePreviewPlacementControls() {
   const selection = document.getElementById("previewServoSelection");
   selection.replaceChildren();
@@ -2026,6 +2231,7 @@ function initializePreviewPlacementControls() {
     });
     transforms.append(group);
   });
+  if (selectedNode.objectType === "Null") renderNullConstraints(selectedNode, transforms);
   updatePreviewTransform();
 }
 
@@ -2243,6 +2449,59 @@ function servoWorldPoint(nodes, index, point, shaft = false) {
   return servoWorldPoint(nodes, node.parent - 1, point, attachToShaft);
 }
 
+function previewWorldPoint(nodes, index, point, shaft = false) {
+  return (previewPhysicsEnabled && previewPhysics?.point(index, point, shaft)) || servoWorldPoint(nodes, index, point, shaft);
+}
+
+function drawPreviewConstraintGuides(ctx, project, line, width, height) {
+  if (!previewPhysicsEnabled || !previewPhysics) return;
+  const colors = { x: "#ff7373", y: "#76e6a4", z: "#7abfff" };
+  previewPhysics.constraintGuides().forEach(guide => {
+    if (!guide.current) return;
+    const axis = ["x", "y", "z"].indexOf(guide.axis), color = colors[guide.axis];
+    const low = guide.origin[axis] + guide.min, high = guide.origin[axis] + guide.max;
+    const target = [...guide.current]; target[axis] = Math.max(low, Math.min(high, guide.current[axis]));
+    const start = [...target], end = [...target]; start[axis] = low; end[axis] = high;
+    const tick = (point, span = 5) => {
+      const a = [...point], b = [...point]; a[(axis + 1) % 3] -= span; b[(axis + 1) % 3] += span;
+      line(a, b, color, 2);
+    };
+    ctx.save();
+    if (low === high) {
+      // A cross shows the held plane even when a zero-length range has no rail.
+      for (const perpendicular of [(axis + 1) % 3, (axis + 2) % 3]) {
+        const a = [...start], b = [...start]; a[perpendicular] -= 45; b[perpendicular] += 45;
+        line(a, b, color, 2);
+      }
+    } else {
+      line(start, end, color, 3); tick(start); tick(end);
+    }
+    ctx.setLineDash([5, 4]);
+    if (guide.axis === "y") {
+      const floor = [...target]; floor[1] = 0;
+      line(floor, target, color, 1);
+    }
+    if (Math.abs(guide.current[axis] - target[axis]) > 0.01) line(guide.current, target, "#ff9d9d", 2);
+    ctx.setLineDash([]);
+    const screen = project(guide.current);
+    if (screen.every(Number.isFinite)) {
+      ctx.beginPath(); ctx.arc(screen[0], screen[1], 4, 0, Math.PI * 2); ctx.fillStyle = color; ctx.fill();
+      const name = servoPreview.nodes[guide.index]?.name || "Null";
+      const error = guide.current[axis] - target[axis];
+      const text = name + " " + guide.axis.toUpperCase() + " " + guide.current[axis].toFixed(1) + " mm | " +
+        (low === high ? "hold " + low.toFixed(1) : low.toFixed(1) + "…" + high.toFixed(1)) + " mm" +
+        (Math.abs(error) > 0.5 ? " (error " + error.toFixed(1) + " mm)" : "");
+      ctx.font = "11px system-ui";
+      ctx.textAlign = screen[0] > width / 2 ? "right" : "left";
+      const x = Math.max(8, Math.min(width - 8, screen[0] + (ctx.textAlign === "right" ? -8 : 8)));
+      const y = Math.max(16, Math.min(height - 8, screen[1] - 12 - axis * 13));
+      ctx.lineWidth = 3; ctx.strokeStyle = "#0d1822"; ctx.strokeText(text, x, y);
+      ctx.fillStyle = color; ctx.fillText(text, x, y);
+    }
+    ctx.restore();
+  });
+}
+
 function clampPreviewPitch(pitch) {
   // Include exact side, top and bottom views.
   return Math.max(-Math.PI / 2, Math.min(Math.PI / 2, pitch));
@@ -2299,7 +2558,7 @@ function clipPreviewNearPlane(points) {
 
 function drawSelectedPreviewAxes(ctx, nodes, index, project, muted = false) {
   if (!nodes[index]) return;
-  const origin = project(servoWorldPoint(nodes, index, [0, 0, 0]));
+  const origin = project(previewWorldPoint(nodes, index, [0, 0, 0]));
   if (!origin.every(Number.isFinite)) return;
   ctx.save();
   ctx.font = "bold 11px system-ui";
@@ -2310,7 +2569,7 @@ function drawSelectedPreviewAxes(ctx, nodes, index, project, muted = false) {
   axes.forEach(([label, color], axis) => {
     const point = [0, 0, 0];
     point[axis] = muted ? 18 : 25;
-    const end = project(servoWorldPoint(nodes, index, point));
+    const end = project(previewWorldPoint(nodes, index, point));
     const dx = end[0] - origin[0], dy = end[1] - origin[1];
     const length = Math.hypot(dx, dy);
     if (!Number.isFinite(length) || length < 1) return;
@@ -2401,7 +2660,7 @@ function drawServoPreview() {
   ctx.lineWidth = 1;
   const faces = [], labels = [];
   function box(index, offset, dimensions, color, shaft) {
-    const vertices = Array.from({ length: 8 }, (_, bits) => servoWorldPoint(nodes, index,
+    const vertices = Array.from({ length: 8 }, (_, bits) => previewWorldPoint(nodes, index,
       dimensions.map((size, axis) => offset[axis] + ((bits >> axis) & 1 ? 0.5 : -0.5) * size), shaft));
     [[0, 1, 3, 2], [4, 6, 7, 5], [0, 4, 5, 1], [2, 3, 7, 6], [0, 2, 6, 4], [1, 5, 7, 3]].forEach(indices => {
       const points = projectPolygon(indices.map(i => vertices[i]));
@@ -2413,7 +2672,7 @@ function drawServoPreview() {
     const segments = 16;
     const rings = [-0.5, 0.5].map(side => Array.from({ length: segments }, (_, i) => {
       const angle = i * Math.PI * 2 / segments;
-      return servoWorldPoint(nodes, index,
+      return previewWorldPoint(nodes, index,
         [offset[0] + Math.cos(angle) * radius, offset[1] + side * height,
           offset[2] + Math.sin(angle) * radius], shaft);
     }));
@@ -2443,7 +2702,7 @@ function drawServoPreview() {
       label: point => {
         if (!servoPreview.showLabels) return;
         const suffix = node.objectType === "Servo" ? " \u00b7 " + servoCommandText(node, node.angle) : "";
-        labels.push({ point: project(servoWorldPoint(nodes, index, point)), text: node.name + suffix });
+        labels.push({ point: project(previewWorldPoint(nodes, index, point)), text: node.name + suffix });
       }
     });
     if (node.objectType === "Servo" && node.continuous) {
@@ -2451,7 +2710,19 @@ function drawServoPreview() {
       box(index, [5, node.model === "micro" ? 7 : 5, 0], [6, 0.6, 1.5], "#ffe08a", true);
     }
   });
+  if (previewPhysics) {
+    previewPhysics.boxes().forEach(({ vertices, color }) => {
+      [[0, 1, 3, 2], [4, 6, 7, 5], [0, 4, 5, 1], [2, 3, 7, 6], [0, 2, 6, 4], [1, 5, 7, 3]].forEach(indices => {
+        const points = projectPolygon(indices.map(i => vertices[i]));
+        if (points.length >= 3) faces.push({ points, color, depth: points.reduce((sum, point) => sum + point[2], 0) / points.length });
+      });
+    });
+  }
   renderPreviewFaces(ctx, faces, canvas.width, canvas.height, ratio);
+  if (previewPhysics && previewPhysicsDebug) {
+    previewPhysics.debugLines().forEach(({ start, end, color }) => gridLine(start, end, color, 1));
+  }
+  drawPreviewConstraintGuides(ctx, project, gridLine, width, height);
   ctx.font = "12px system-ui"; ctx.textAlign = "center";
   labels.forEach(({ point, text }) => {
     if (!point.every(Number.isFinite)) return;

@@ -23,7 +23,7 @@ test('serves local assets and saves only valid same-origin config requests', asy
     assert.equal((await (await fetch(base + '/api/devserver')).json()).localConfigServer, true);
     assert.equal((await fetch(base + '/api/servo', { method: 'POST' })).status, 404);
     const originalNames = configuration.components.map(component => component.name);
-    configuration.components.push({ name: 'Null local test', objectType: 'Null', parent: null, position: { x: 1, y: 2, z: 3 }, rotation: { x: 0, y: 0, z: 0 } });
+    configuration.components.push({ name: 'Null local test', objectType: 'Null', rotationConstraints: { x: true, z: true }, constraints: { x: { enabled: false, min: 0, max: 0 }, y: { enabled: true, min: -10, max: 10 }, z: { enabled: true, min: 0, max: 0 } }, parent: null, position: { x: 1, y: 2, z: 3 }, rotation: { x: 0, y: 0, z: 0 } });
     configuration.camera = { yaw: 0.5, pitch: 0.25, roll: 0.1, zoom: 1.5, panX: 10, panY: 20, panZ: -30, perspective: true,
       webcam: { active: true, deviceId: 'test-camera', fit: 'contain', mirror: true, controls: { zoom: 2, focusMode: 'manual' } } };
     configuration.camera.views = { u2: { yaw: -0.4, pitch: 0.1, roll: 0, zoom: 2, panX: 1, panY: 2, panZ: 3, perspective: false } };
@@ -42,6 +42,11 @@ test('serves local assets and saves only valid same-origin config requests', asy
     assert.equal((await post(patch)).status, 409);
     const saved = fs.readFileSync(path.join(directory, 'config.json'), 'utf8');
     patch.originalNames = configuration.components.map(component => component.name);
+    const constraints = configuration.components.at(-1).constraints;
+    configuration.components.at(-1).constraints = { y: { enabled: true, min: 10, max: -10 } };
+    assert.equal((await post(patch)).status, 400);
+    assert.equal(fs.readFileSync(path.join(directory, 'config.json'), 'utf8'), saved);
+    configuration.components.at(-1).constraints = constraints;
     const camera = configuration.camera;
     configuration.camera = { ...camera, zoom: -1 };
     assert.equal((await post(patch)).status, 400);

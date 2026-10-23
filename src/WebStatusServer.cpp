@@ -15,6 +15,18 @@ constexpr uint32_t kMaximumStepDurationMilliseconds = 60000;
 constexpr size_t kMaximumSequenceFileBytes = 8192;
 constexpr unsigned long kServoPositionSaveDelayMilliseconds = 5000;
 
+bool validNullConstraints(JsonVariantConst value) {
+  if (!value.is<JsonObjectConst>()) return false;
+  for (JsonPairConst entry : value.as<JsonObjectConst>()) {
+    const String axis = entry.key().c_str();
+    if (axis != "x" && axis != "y" && axis != "z") return false;
+    const JsonObjectConst limit = entry.value().as<JsonObjectConst>();
+    if (limit.isNull() || !limit["enabled"].is<bool>() || !limit["min"].is<double>() || !limit["max"].is<double>() ||
+        !isfinite(limit["min"].as<double>()) || !isfinite(limit["max"].as<double>()) || limit["min"].as<double>() > limit["max"].as<double>()) return false;
+  }
+  return true;
+}
+
 bool validCameraSettings(JsonVariantConst value) {
   if (!value.is<JsonObjectConst>()) return false;
   const JsonObjectConst camera = value.as<JsonObjectConst>();
@@ -676,6 +688,22 @@ void WebStatusServer::savePreviewConfiguration() {
     }
     if (!name[0] || strlen(name) > 31) {
       fail(400, "Component name must contain 1-31 bytes"); return;
+    }
+    if (!update["constraints"].isUnbound()) {
+      if (String(entries[index]["objectType"] | "Servo") != "Null" || !validNullConstraints(update["constraints"])) {
+        fail(400, "Invalid Null axis constraints"); return;
+      }
+      entries[index]["constraints"].set(update["constraints"]);
+    }
+    if (!update["rotationConstraints"].isUnbound()) {
+      if (String(entries[index]["objectType"] | "Servo") != "Null" || !update["rotationConstraints"].is<JsonObjectConst>()) {
+        fail(400, "Invalid Null rotation constraints"); return;
+      }
+      for (JsonPairConst entry : update["rotationConstraints"].as<JsonObjectConst>()) {
+        const String axis = entry.key().c_str();
+        if ((axis != "x" && axis != "y" && axis != "z") || !entry.value().is<bool>()) { fail(400, "Invalid Null rotation constraints"); return; }
+      }
+      entries[index]["rotationConstraints"].set(update["rotationConstraints"]);
     }
     entries[index]["name"] = name;
     if (!update["parent"].isUnbound()) {

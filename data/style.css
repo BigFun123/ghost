@@ -800,3 +800,20 @@ body { padding-bottom: calc(36px + env(safe-area-inset-bottom, 0px)); }
 #previewGrid[aria-pressed="true"] { background: #205547; border-color: #5ce0b0; }
 
 #previewUserViews button[aria-pressed="true"] { background: #205547; border-color: #5ce0b0; }
+
+.preview-physics-controls { display: flex; flex-wrap: wrap; gap: 4px; }
+#previewPhysics[aria-pressed="true"], #physicsDebug[aria-pressed="true"] { background: #205547; border-color: #5ce0b0; }
+
+.preview-toolbar h2 { white-space: nowrap; }
+.preview-toolbar-actions { min-width: 0; }
+
+.setup-transforms .null-constraints { display: block; border-radius: 4px; }
+.null-constraint-row { display: grid; grid-template-columns: minmax(100px, 1.2fr) repeat(2, minmax(0, 1fr)); gap: 8px; align-items: center; padding: 7px 0; }
+.null-constraint-row label { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.null-constraint-row .null-constraint-toggle { flex-direction: row-reverse; justify-content: flex-end; align-items: center; }
+.null-constraint-toggle input[type="checkbox"] { width: auto; margin: 0; }
+.null-constraint-row input:disabled { opacity: .4; }
+
+.null-rotation-constraints { display: flex; flex-wrap: wrap; gap: 12px; border-top: 1px solid #537183; margin-top: 8px; padding-top: 8px; }
+.null-rotation-constraints p { flex-basis: 100%; margin: 0; }
+.null-rotation-constraints label { display: flex; flex-direction: row-reverse; align-items: center; gap: 5px; }

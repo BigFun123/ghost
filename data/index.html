@@ -177,6 +177,13 @@
             </div>
             <button id="previewGrid" type="button" aria-pressed="true" title="Show or hide the grid">Grid</button>
             <label class="preview-labels-toggle"><input id="previewLabels" type="checkbox"> Labels</label>
+            <div class="preview-physics-controls" role="group" aria-label="Physics simulation">
+              <button id="previewPhysics" type="button" aria-pressed="true">Physics</button>
+              <button id="physicsDrop" type="button" disabled>Drop cube</button>
+              <button id="physicsClear" type="button" disabled>Clear cubes</button>
+              <button id="physicsResetRobot" type="button" disabled>Reset robot</button>
+              <button id="physicsDebug" type="button" aria-pressed="false" disabled>Colliders</button>
+            </div>
             <div id="previewUserViews" class="preview-camera-views" role="group" aria-label="Saved user views">
               <button type="button" data-user-view="u1" aria-pressed="false" title="Recall U1; Shift-click to store the current view, then Save config">U1</button>
               <button type="button" data-user-view="u2" aria-pressed="false" title="Recall U2; Shift-click to store the current view, then Save config">U2</button>
@@ -257,6 +264,7 @@
     <span id="sequencerStatus">Loading saved sequence…</span>
     <span id="sequencerError" class="status-error"></span>
     <span id="webcamStatus"></span>
+    <span id="physicsStatus"></span>
     <span id="previewStatus">Waiting for device angles.</span>
     <span id="previewSaveStatus"></span>
     <span id="servoSettingsStatus"></span>
@@ -268,6 +276,7 @@
   <script src="./3dmodels/UBracketShort.js" defer></script>
   <script src="./3dmodels/UBracketLong.js" defer></script>
   <script src="./3d-renderer.js" defer></script>
+  <script src="./physics.js" defer></script>
   <script src="./app.js" defer></script>
 </body>
 

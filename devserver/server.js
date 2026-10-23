@@ -27,6 +27,11 @@ function validateConfiguration(config) {
     for (const field of ['position', 'rotation']) {
       if (component[field] !== undefined && !['x', 'y', 'z'].every(axis => Number.isFinite(component[field]?.[axis]))) throw new Error('Transforms require finite x, y and z.');
     }
+    if (component.constraints !== undefined && (type !== 'Null' || !component.constraints || typeof component.constraints !== 'object' || Array.isArray(component.constraints) ||
+        Object.entries(component.constraints).some(([axis, limit]) => !['x', 'y', 'z'].includes(axis) || !limit || typeof limit.enabled !== 'boolean' ||
+          !Number.isFinite(limit.min) || !Number.isFinite(limit.max) || limit.min > limit.max))) throw new Error('Invalid Null axis constraints.');
+    if (component.rotationConstraints !== undefined && (type !== 'Null' || !component.rotationConstraints || typeof component.rotationConstraints !== 'object' || Array.isArray(component.rotationConstraints) ||
+        Object.entries(component.rotationConstraints).some(([axis, locked]) => !['x', 'y', 'z'].includes(axis) || typeof locked !== 'boolean'))) throw new Error('Invalid Null rotation constraints.');
     if (type !== 'Servo') continue;
     servos++;
     const address = Number(component.address), key = address + ':' + component.channel;

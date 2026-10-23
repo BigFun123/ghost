@@ -1,0 +1,2 @@
+If there is no space on the device for rapier (2.5mb) then it can only load from the cdn:
+https://cdn.skypack.dev/@dimforge/rapier3d-compat
