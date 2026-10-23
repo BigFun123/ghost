@@ -2,6 +2,7 @@ const setText = (id, value) => {
   const element = document.getElementById(id);
   if (element) element.textContent = value;
 };
+const formatMegabytes = bytes => (bytes / 1000000).toFixed(3) + " MB";
 const tabs = [
   { button: document.getElementById("overviewTab"), panel: document.getElementById("overviewPanel") },
   { button: document.getElementById("mixerTab"), panel: document.getElementById("mixerPanel") },
@@ -11,6 +12,12 @@ const tabs = [
 var previewReady = false;
 const mixer = document.querySelector(".mixer");
 const masterStrip = mixer.querySelector(".master-strip");
+const sequencerToggle = document.getElementById("sequencerToggle");
+const sequencerPanel = document.getElementById("sequencerPanel");
+sequencerToggle.addEventListener("click", () => {
+  sequencerPanel.hidden = !sequencerPanel.hidden;
+  sequencerToggle.setAttribute("aria-expanded", String(!sequencerPanel.hidden));
+});
 const sweepButton = document.getElementById("sweepButton");
 const sweepAllButton = document.getElementById("sweepAllButton");
 const centerButton = document.getElementById("centerButton");
@@ -25,6 +32,12 @@ const playSequenceButton = document.getElementById("playSequenceButton");
 const stopSequenceButton = document.getElementById("stopSequenceButton");
 const clearSequenceButton = document.getElementById("clearSequenceButton");
 const sequencerSteps = document.getElementById("sequencerSteps");
+const sequencerSettingsToggle = document.getElementById("sequencerSettingsToggle");
+const sequencerSettings = document.getElementById("sequencerSettings");
+sequencerSettingsToggle.addEventListener("click", () => {
+  sequencerSettings.hidden = !sequencerSettings.hidden;
+  sequencerSettingsToggle.setAttribute("aria-expanded", String(!sequencerSettings.hidden));
+});
 let servoControls = [];
 let controllerConfiguration = null;
 let controllerRebooting = false;
@@ -38,11 +51,49 @@ let sweepRunning = false;
 let sequence = { loop: false, finish: false, steps: [] };
 let sequenceRunId = 0;
 let sequenceStepIndex = -1;
+let playbackSequenceView = null;
 let selectedSequenceStepIndex = -1;
 let sequencePlaying = false;
+const sequenceLiveOverrides = new Map();
 let sequenceSaving = false;
 let sequenceApplying = false;
 let sequenceLoaded = false;
+let sequenceLoading = false;
+let selectedSequenceSlot = "a";
+const simulationSequences = new Map();
+const sequenceSlotButtons = Array.from(document.querySelectorAll("#sequenceSlots button"));
+const sequenceFilename = () => "sequence_" + selectedSequenceSlot + ".json";
+const sequenceEndpoint = () => "/api/sequence/" + selectedSequenceSlot;
+sequenceSlotButtons.forEach(button => button.addEventListener("click", async () => {
+  if (sequenceLoading || sequenceSaving || sequencePlaying || sequenceApplying || controllerRebooting || sweepRunning) return;
+  if (button.dataset.slot === selectedSequenceSlot && sequenceLoaded) return;
+  const previousSlot = selectedSequenceSlot;
+  const previousSequence = sequence;
+  const previousSelection = selectedSequenceStepIndex;
+  const previousLoaded = sequenceLoaded;
+  simulationSequences.set(previousSlot, sequence);
+  sequenceLoading = true;
+  selectedSequenceSlot = button.dataset.slot;
+  selectedSequenceStepIndex = -1;
+  sequence = simulationSequences.get(selectedSequenceSlot) || { loop: false, finish: false, steps: [] };
+  updateSequencerControls();
+  setText("sequencerError", "");
+  setText("sequencerStatus", "Loading " + sequenceFilename() + "…");
+  try {
+    await loadSequence();
+  } catch (error) {
+    selectedSequenceSlot = previousSlot;
+    sequence = previousSequence;
+    selectedSequenceStepIndex = previousSelection;
+    sequenceLoaded = previousLoaded;
+    setText("sequencerStatus", "Sequence was not switched");
+    setText("sequencerError", error.message);
+  } finally {
+    sequenceLoading = false;
+    renderSequence();
+    updateSequencerControls();
+  }
+}));
 let overdueSequenceSteps = new WeakSet();
 
 function selectTab(selected) {
@@ -179,7 +230,8 @@ function createServoStrip(configuration, channel) {
   const error = makeElement("div", "servo-error");
   error.id = "servoMessage" + channel;
   error.setAttribute("role", "alert");
-  strip.append(error);
+  error.setAttribute("aria-label", "Servo " + channel + " error");
+  document.querySelector(".status-messages").append(error);
   return { strip, slider, scale, muteButton, soloButton, motionButton, speedButton, reverseButton, powerButton, angle };
 }
 
@@ -203,10 +255,10 @@ function stopSweep() {
 function updateSequencerControls() {
   const allServosReady = servoControls.length > 0 &&
     servoControls.every(control => control.ready);
-  const locked = controllerRebooting || sequencePlaying || sequenceSaving || sequenceApplying ||
+  const locked = controllerRebooting || sequencePlaying || sequenceSaving || sequenceLoading || sequenceApplying ||
     !sequenceLoaded;
   writeStepButton.textContent = selectedSequenceStepIndex < 0
-    ? "WRITE STEP"
+    ? "ADD STEP"
     : "UPDATE STEP";
   writeStepButton.disabled = locked || !allServosReady ||
     (selectedSequenceStepIndex < 0 && sequence.steps.length >= 32);
@@ -214,12 +266,19 @@ function updateSequencerControls() {
     !allServosReady || sequence.steps.length === 0;
   stopSequenceButton.disabled = !sequencePlaying;
   clearSequenceButton.disabled = locked || sequence.steps.length === 0;
+  sequenceSlotButtons.forEach(button => {
+    button.disabled = locked || sweepRunning;
+    button.setAttribute("aria-pressed", String(button.dataset.slot === (playbackSequenceView?.slot || selectedSequenceSlot)));
+  });
+  document.getElementById("appendSequenceStep").disabled = locked || !allServosReady || sequence.steps.length >= 32;
+  document.getElementById("appendSequenceCall").disabled = locked || sequence.steps.length >= 32;
   stepDurationInput.disabled = locked;
   sequenceLoopInput.disabled = locked;
   sequenceFinishInput.disabled = locked;
   playbackRateInput.disabled = locked;
-  sequencerSteps.querySelectorAll("input, button").forEach(element => {
-    element.disabled = locked || (element.classList.contains("move-step-up-button") && element.dataset.stepIndex === "0");
+  sequencerSteps.querySelectorAll("input, select, button").forEach(element => {
+    if (element.id === "appendSequenceStep" || element.id === "appendSequenceCall") return;
+    element.disabled = locked || element.dataset.sequenceCall === "true" || (element.classList.contains("move-step-up-button") && element.dataset.stepIndex === "0");
   });
 }
 
@@ -227,8 +286,9 @@ function setServoPlaybackLock(locked) {
   servoControls.forEach(control => {
     const disabled = controllerRebooting || !control.ready || locked;
     control.slider.disabled = disabled;
-    control.muteButton.disabled = disabled;
-    control.soloButton.disabled = disabled;
+    const mixDisabled = controllerRebooting || !control.ready || (locked && !sequencePlaying);
+    control.muteButton.disabled = mixDisabled;
+    control.soloButton.disabled = mixDisabled;
     control.motionButton.disabled = disabled;
     control.speedButton.disabled = disabled;
     control.reverseButton.disabled = disabled;
@@ -236,22 +296,25 @@ function setServoPlaybackLock(locked) {
 }
 
 function renderSequence() {
+  const addActions = document.getElementById("sequenceAddActions");
   sequencerSteps.replaceChildren();
-  sequenceLoopInput.checked = sequence.loop;
-  sequenceFinishInput.checked = sequence.finish === true;
-  sequence.steps.forEach((step, index) => {
+  const displayedSequence = playbackSequenceView?.sequence || sequence;
+  const displayedSlot = playbackSequenceView?.slot || selectedSequenceSlot;
+  sequenceLoopInput.checked = displayedSequence.loop;
+  sequenceFinishInput.checked = displayedSequence.finish === true;
+  displayedSequence.steps.forEach((step, index) => {
     const item = makeElement("li");
     if (index === sequenceStepIndex) item.setAttribute("aria-current", "step");
     const row = makeElement("div", "sequencer-step-row");
     const select = makeElement(
       "button",
       "mix-button sequence-step-select",
-      "Step " + (index + 1)
+      "" + (index + 1)
     );
     select.type = "button";
     select.setAttribute(
       "aria-pressed",
-      String(index === selectedSequenceStepIndex)
+      String(displayedSlot === selectedSequenceSlot && index === selectedSequenceStepIndex)
     );
     select.addEventListener("click", () => selectSequenceStep(index));
     row.append(select);
@@ -260,14 +323,14 @@ function renderSequence() {
     if (overdueSequenceSteps.has(step)) {
       duration.classList.add("step-time-overrun");
       duration.title = "Servo motion could not complete within this step duration.";
-      duration.setAttribute("aria-label", "Step " + (index + 1) + " duration in milliseconds; motion exceeded this duration");
+      duration.setAttribute("aria-label", "" + (index + 1) + " duration in milliseconds; motion exceeded this duration");
     }
     duration.type = "number";
     duration.min = "100";
     duration.max = "60000";
     duration.step = "100";
     duration.value = String(step.durationMs);
-    if (!overdueSequenceSteps.has(step)) duration.setAttribute("aria-label", "Step " + (index + 1) + " duration in milliseconds");
+    if (!overdueSequenceSteps.has(step)) duration.setAttribute("aria-label", "" + (index + 1) + " duration in milliseconds");
     duration.addEventListener("change", () => {
       const durationMs = Number(duration.value);
       if (!Number.isInteger(durationMs) || durationMs < 100 || durationMs > 60000) {
@@ -282,7 +345,25 @@ function renderSequence() {
       };
       saveSequenceChange(updated);
     });
-    row.append(duration);
+    if (step.type === "sequence") {
+      const target = makeElement("select", "sequence-step-target");
+      target.setAttribute("aria-label", "Step " + (index + 1) + " called sequence");
+      for (const slot of "abcdefghij") {
+        const option = makeElement("option", "", "> " + slot.toUpperCase());
+        option.value = slot;
+        target.append(option);
+      }
+      target.value = step.slot;
+      target.addEventListener("change", () => saveSequenceChange({ ...sequence,
+        steps: sequence.steps.map((saved, i) => i === index ? { type: "sequence", slot: target.value } : saved)
+      }));
+      row.append(target);
+      select.disabled = true;
+      select.dataset.sequenceCall = "true";
+      select.title = "Sequence call — choose its target from the dropdown";
+    } else {
+      row.append(duration);
+    }
 
     const remove = makeElement("button", "mix-button remove-step-button", "×");
     remove.type = "button";
@@ -311,7 +392,15 @@ function renderSequence() {
     item.append(row);
     sequencerSteps.append(item);
   });
+  sequencerSteps.append(addActions);
   updateSequencerControls();
+  const playingStep = sequencerSteps.querySelector('[aria-current="step"]');
+  if (playingStep && !sequencerPanel.hidden) {
+    const row = playingStep.getBoundingClientRect();
+    const list = sequencerSteps.getBoundingClientRect();
+    if (row.top < list.top) sequencerSteps.scrollTop -= list.top - row.top;
+    else if (row.bottom > list.bottom) sequencerSteps.scrollTop += row.bottom - list.bottom;
+  }
 }
 
 function moveSequenceStepUp(index) {
@@ -353,13 +442,8 @@ async function applySequenceStep(step, useStartupMotion = false, playbackRate = 
   }));
 }
 
-function getMediumMotionDuration(step) {
-  const longestDistance = Math.max(...step.angles.map((angle, servoIndex) =>
-    Math.abs(angle - Number(servoControls[servoIndex].slider.value))));
-  return Math.max(50, Math.ceil(longestDistance * 3000 / 180));
-}
-
 async function selectSequenceStep(index) {
+  if (sequence.steps[index]?.type === "sequence") return;
   if (sequencePlaying || sequenceSaving || sequenceApplying) return;
   if (selectedSequenceStepIndex === index) {
     selectedSequenceStepIndex = -1;
@@ -378,7 +462,7 @@ async function selectSequenceStep(index) {
   stepDurationInput.value = String(sequence.steps[index].durationMs);
   try {
     await applySequenceStep(sequence.steps[index]);
-    setText("sequencerStatus", "Step " + (index + 1) + " selected");
+    setText("sequencerStatus", "" + (index + 1) + " selected");
   } catch (error) {
     setText("sequencerStatus", "Could not load step " + (index + 1));
     setText("sequencerError", error.message);
@@ -402,6 +486,9 @@ function encodeServoState(control) {
 function applyServoState(control, encodedState) {
   control.muted = (encodedState & 1) !== 0;
   control.solo = (encodedState & 2) !== 0;
+  const overrides = sequencePlaying ? sequenceLiveOverrides.get(control) : null;
+  if (overrides?.muted !== undefined) control.muted = overrides.muted;
+  if (overrides?.solo !== undefined) control.solo = overrides.solo;
   control.smoothMode = (encodedState & 4) !== 0;
   const speed = (encodedState >> 3) & 3;
   control.motionSpeed = speed === 0 ? "L" : speed === 1 ? "M" : "H";
@@ -411,7 +498,7 @@ function applyServoState(control, encodedState) {
 }
 
 async function saveSequenceChange(updated, previousSelection = selectedSequenceStepIndex) {
-  if (sequencePlaying || sequenceSaving) return;
+  if (sequencePlaying || sequenceSaving || sequenceLoading) return;
   const previous = sequence;
   sequence = updated;
   renderSequence();
@@ -424,14 +511,14 @@ async function saveSequenceChange(updated, previousSelection = selectedSequenceS
       setText("sequencerStatus", sequence.steps.length + " simulation step(s), kept in this page");
       return;
     }
-    const response = await fetch("/api/sequence", {
+    const response = await fetch(sequenceEndpoint(), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(sequence)
     });
     const result = await response.text();
     if (!response.ok) throw new Error(result || "HTTP " + response.status);
-    setText("sequencerStatus", sequence.steps.length + (localConfigServer ? " step(s) saved to data/sequence.json" : " step(s) saved on device"));
+    setText("sequencerStatus", sequence.steps.length + " step(s) saved to " + (localConfigServer ? "data/" : "") + sequenceFilename());
   } catch (error) {
     sequence = previous;
     selectedSequenceStepIndex = previousSelection;
@@ -444,16 +531,11 @@ async function saveSequenceChange(updated, previousSelection = selectedSequenceS
   }
 }
 
-async function loadSequence() {
-  const response = await fetch("/api/sequence", { cache: "no-store", signal: AbortSignal.timeout(3000) });
-  if ((!localConfigServer && offlineSimulation) || response.status === 404 || response.status === 405 ||
-      response.headers?.get("content-type")?.includes("text/html")) {
-    sequenceLoaded = true;
-    setText("sequencerError", "");
-    setText("sequencerStatus", "Local sequence - ready");
-    renderSequence();
-    return;
+async function readSequence(slot) {
+  if (offlineSimulation && !localConfigServer) {
+    return simulationSequences.get(slot) || (slot === selectedSequenceSlot ? sequence : { loop: false, finish: false, steps: [] });
   }
+  const response = await fetch("/api/sequence/" + slot, { cache: "no-store", signal: AbortSignal.timeout(3000) });
   if (!response.ok) {
     const result = await response.text();
     throw new Error(/<[^>]+>/.test(result) ? "Could not load sequence (HTTP " + response.status + ")" : result || "HTTP " + response.status);
@@ -461,8 +543,8 @@ async function loadSequence() {
   const saved = await response.json();
   if (typeof saved.loop !== "boolean" || (saved.finish !== undefined && typeof saved.finish !== "boolean") || !Array.isArray(saved.steps) ||
     saved.steps.length > 32 ||
-    saved.steps.some(step =>
-      !Array.isArray(step.angles) || step.angles.length !== servoControls.length ||
+    saved.steps.some(step => step?.type === "sequence" ? !/^[a-j]$/.test(step.slot) :
+      !step || !Array.isArray(step.angles) || step.angles.length !== servoControls.length ||
       (step.servoStates !== undefined &&
         (!Array.isArray(step.servoStates) ||
           step.servoStates.length !== servoControls.length ||
@@ -473,20 +555,25 @@ async function loadSequence() {
       step.angles.some(angle => !Number.isInteger(angle) || angle < 0 || angle > 180))) {
     throw new Error("Stored sequence data has an invalid format.");
   }
-  sequence = {
+  return {
     ...saved,
     finish: saved.finish === true,
-    steps: saved.steps.map(step => ({
+    steps: saved.steps.map(step => step.type === "sequence" ? step : ({
       ...step,
       servoStates: step.servoStates || servoControls.map(encodeServoState)
     }))
   };
+}
+
+async function loadSequence() {
+  sequence = await readSequence(selectedSequenceSlot);
   sequenceLoaded = true;
   renderSequence();
-  setText("sequencerStatus", sequence.steps.length + (localConfigServer ? " step(s) loaded from data/sequence.json" : " step(s) saved on device"));
+  setText("sequencerStatus", sequence.steps.length + " step(s) loaded from " + (localConfigServer ? "data/" : "") + sequenceFilename());
 }
 
 async function writeSequenceStep() {
+  if (controllerRebooting || sequencePlaying || sequenceSaving || sequenceLoading || sequenceApplying || !sequenceLoaded) return;
   const durationMs = Number(stepDurationInput.value);
   if (!Number.isInteger(durationMs) || durationMs < 100 || durationMs > 60000) {
     setText("sequencerError", "New step duration must be between 100 and 60000 milliseconds.");
@@ -509,7 +596,9 @@ async function writeSequenceStep() {
     step.durationMs = steps[selectedSequenceStepIndex].durationMs;
     steps[selectedSequenceStepIndex] = step;
   }
-  await saveSequenceChange({ ...sequence, steps });
+  const previousSelection = selectedSequenceStepIndex;
+  selectedSequenceStepIndex = -1;
+  await saveSequenceChange({ ...sequence, steps }, previousSelection);
 }
 
 function waitForStep(runId, durationMs) {
@@ -527,8 +616,8 @@ function waitForStep(runId, durationMs) {
   });
 }
 
-function sequenceStepWaitMilliseconds(step, playbackRate, motionEnds) {
-  if (!sequence.finish) return step.durationMs / playbackRate;
+function sequenceStepWaitMilliseconds(step, playbackRate, motionEnds, finish = sequence.finish) {
+  if (!finish) return step.durationMs / playbackRate;
   const remaining = Math.max(0, ...motionEnds.map(end => end - performance.now()));
   // Continuous servos have no destination, so their run time still comes from the step.
   const continuousDuration = servoControls.some(control => isEligible(control) && control.continuous)
@@ -550,6 +639,7 @@ async function playSequence() {
   }
 
   setText("sequencerError", "");
+  sequenceLiveOverrides.clear();
   sequencePlaying = true;
   overdueSequenceSteps = new WeakSet();
   const runId = ++sequenceRunId;
@@ -560,30 +650,53 @@ async function playSequence() {
   centerButton.disabled = true;
   stopSweepButton.disabled = true;
   let index = 0;
+  let startup = true;
   try {
-    const firstStep = sequence.steps[0];
-    setText("sequencerStatus", "Moving smoothly to the first step");
-    const startupMotionDuration = getMediumMotionDuration(firstStep);
-    await applySequenceStep(firstStep, true, playbackRate);
-    await waitForStep(runId, startupMotionDuration / playbackRate);
+    const plan = [];
+    const cache = new Map();
+    async function expand(saved, slot, path, rootIndex = null) {
+      if (path.includes(slot)) throw new Error("Circular sequence call: " + [...path, slot].map(s => s.toUpperCase()).join(" > "));
+      for (let i = 0; i < saved.steps.length; i++) {
+        if (runId !== sequenceRunId) return;
+        const step = saved.steps[i];
+        if (step.type === "sequence") {
+          if ([...path, slot].includes(step.slot)) throw new Error("Circular sequence call: " + [...path, slot, step.slot].map(s => s.toUpperCase()).join(" > "));
+          if (!cache.has(step.slot)) cache.set(step.slot, await readSequence(step.slot));
+          if (runId !== sequenceRunId) return;
+          await expand(cache.get(step.slot), step.slot, [...path, slot], rootIndex ?? i);
+        } else {
+          if (plan.length >= 4096) throw new Error("Sequence chain exceeds 4096 motion steps.");
+          plan.push({ step, sequence: saved, finish: saved.finish, slot, index: i, rootIndex: rootIndex ?? i });
+        }
+      }
+    }
+    const hasCalls = sequence.steps.some(step => step.type === "sequence");
+    if (hasCalls) await expand(sequence, selectedSequenceSlot, []);
     if (runId !== sequenceRunId) return;
-
+    if (hasCalls && plan.length === 0) throw new Error("Sequence chain has no motion steps.");
     while (runId === sequenceRunId) {
-      const step = sequence.steps[index];
-      sequenceStepIndex = index;
+      const entry = hasCalls ? plan[index] : null;
+      const step = entry ? entry.step : sequence.steps[index];
+      const finish = entry ? entry.finish : sequence.finish;
+      playbackSequenceView = entry ? { sequence: entry.sequence, slot: entry.slot } : null;
+      sequenceStepIndex = entry ? entry.index : index;
       renderSequence();
       setText("sequencerStatus", "Playing step " + (index + 1) +
         " of " + sequence.steps.length);
-      await applySequenceStep(step, false, playbackRate);
+      if (entry) setText("sequencerStatus", "Playing " + entry.slot.toUpperCase() + " step " + (entry.index + 1));
+      // The initial smooth move is step 1, not a separate pre-roll and hold.
+      await applySequenceStep(step, startup, playbackRate);
+      startup = false;
+      if (runId !== sequenceRunId) break;
       const deadline = performance.now() + step.durationMs / playbackRate;
       const motionEnds = activeStepMotionEnds();
-      await waitForStep(runId, sequenceStepWaitMilliseconds(step, playbackRate, motionEnds));
+      await waitForStep(runId, sequenceStepWaitMilliseconds(step, playbackRate, motionEnds, finish));
       if (runId !== sequenceRunId) break;
-      if (!sequence.finish && motionEnds.some(end => end > deadline + 1)) {
+      if (!finish && motionEnds.some(end => end > deadline + 1)) {
         overdueSequenceSteps.add(step);
       }
       index += 1;
-      if (index >= sequence.steps.length) {
+      if (index >= (hasCalls ? plan.length : sequence.steps.length)) {
         if (!sequence.loop) break;
         index = 0;
       }
@@ -599,8 +712,10 @@ async function playSequence() {
   } finally {
     if (runId === sequenceRunId) {
       sequencePlaying = false;
+      sequenceLiveOverrides.clear();
       stopContinuousServos();
       sequenceStepIndex = -1;
+      playbackSequenceView = null;
       setServoPlaybackLock(false);
       sweepButton.disabled = false;
       sweepAllButton.disabled = false;
@@ -615,8 +730,10 @@ function stopSequence() {
   if (!sequencePlaying) return;
   sequenceRunId += 1;
   sequencePlaying = false;
+  sequenceLiveOverrides.clear();
   stopContinuousServos();
   sequenceStepIndex = -1;
+  playbackSequenceView = null;
   setServoPlaybackLock(false);
   renderSequence();
   setText("sequencerStatus", "Playback stopped");
@@ -627,6 +744,15 @@ function stopSequence() {
   stopSweepButton.disabled = true;
 }
 
+document.getElementById("appendSequenceStep").addEventListener("click", () => {
+  if (sequencePlaying || sequenceSaving || sequenceLoading || sequenceApplying || controllerRebooting || !sequenceLoaded) return;
+  selectedSequenceStepIndex = -1;
+  writeSequenceStep();
+});
+document.getElementById("appendSequenceCall").addEventListener("click", () => {
+  if (sequencePlaying || sequenceSaving || sequenceLoading || sequenceApplying || controllerRebooting || !sequenceLoaded || sequence.steps.length >= 32) return;
+  saveSequenceChange({ ...sequence, steps: [...sequence.steps, { type: "sequence", slot: "a" }] });
+});
 writeStepButton.addEventListener("click", writeSequenceStep);
 playSequenceButton.addEventListener("click", playSequence);
 stopSequenceButton.addEventListener("click", stopSequence);
@@ -693,6 +819,10 @@ function requestServo(control, command) {
 
 async function performServoRequest(control, command) {
   const request = { ...command };
+  // A queued step must respect mute/solo changes made since it was queued.
+  if (sequencePlaying && request.enabled !== undefined) {
+    request.enabled = !control.muted && (!servoControls.some(candidate => candidate.solo) || control.solo) ? "1" : "0";
+  }
   // Saved steps and macros cannot restart motion while this output is off.
   if (!control.outputEnabled) delete request.angle;
   if (Object.keys(request).length === 0) return;
@@ -826,10 +956,12 @@ function initializeServoControls(configurations) {
     });
     ui.muteButton.addEventListener("click", () => {
       control.muted = !control.muted;
+      if (sequencePlaying) sequenceLiveOverrides.set(control, { ...sequenceLiveOverrides.get(control), muted: control.muted });
       syncMuteSolo();
     });
     ui.soloButton.addEventListener("click", () => {
       control.solo = !control.solo;
+      if (sequencePlaying) sequenceLiveOverrides.set(control, { ...sequenceLiveOverrides.get(control), solo: control.solo });
       syncMuteSolo();
     });
     ui.motionButton.addEventListener("click", () => {
@@ -1001,12 +1133,12 @@ async function refresh() {
     setText("core", status.device.core);
     setText("resetReason", status.device.resetReason);
     setText("uptime", status.device.uptimeSeconds + " s");
-    setText("heap", status.device.freeHeap + " bytes");
-    setText("largestBlock", status.device.largestFreeBlock + " bytes");
+    setText("heap", formatMegabytes(status.device.freeHeap));
+    setText("largestBlock", formatMegabytes(status.device.largestFreeBlock));
     setText("fragmentation", status.device.heapFragmentation + "%");
-    setText("flashSize", status.device.flashSize + " bytes");
-    setText("sketchSize", status.device.sketchSize + " bytes");
-    setText("otaSpace", status.device.freeOtaSpace + " bytes");
+    setText("flashSize", formatMegabytes(status.device.flashSize));
+    setText("sketchSize", formatMegabytes(status.device.sketchSize));
+    setText("otaSpace", formatMegabytes(status.device.freeOtaSpace));
     setText("ssid", status.wifi.ssid || "—");
     setText("ip", status.wifi.ip);
     setText("rssi", status.wifi.connected ? status.wifi.rssi + " dBm" : "—");
@@ -1039,8 +1171,8 @@ async function refresh() {
       setText("angle" + control.channel, servo.ready ? servoCommandText(control, servo.angleDegrees) : "Unavailable");
       setText("pulse" + control.channel, servo.ready ? servo.pulseMicroseconds + " µs" : "—");
       control.slider.disabled = !servo.ready || sequencePlaying || sequenceApplying;
-      control.muteButton.disabled = !servo.ready || sequencePlaying || sequenceApplying;
-      control.soloButton.disabled = !servo.ready || sequencePlaying || sequenceApplying;
+      control.muteButton.disabled = controllerRebooting || !servo.ready || (sequenceApplying && !sequencePlaying);
+      control.soloButton.disabled = controllerRebooting || !servo.ready || (sequenceApplying && !sequencePlaying);
       control.motionButton.disabled = !servo.ready || sequencePlaying || sequenceApplying;
       control.speedButton.disabled = !servo.ready || sequencePlaying || sequenceApplying;
       control.reverseButton.disabled = !servo.ready || sequencePlaying || sequenceApplying;
@@ -1311,6 +1443,7 @@ function initializeServoPreview(configurations, configuration = { components: co
       drawServoPreview();
     });
     document.getElementById("previewSave").addEventListener("click", savePreviewConfiguration);
+    document.getElementById("previewDownload").addEventListener("click", downloadPreviewConfiguration);
     document.getElementById("previewEdit").textContent = "Open Setup";
     document.getElementById("previewEdit").addEventListener("click", () => selectTab(3));
     document.getElementById("previewOffline").addEventListener("change", event => setOfflineSimulation(event.target.checked));
@@ -1390,6 +1523,7 @@ function initializeServoPreview(configurations, configuration = { components: co
     servoPreview = null; button.disabled = true;
     document.getElementById("previewEdit").disabled = true;
     document.getElementById("previewSave").disabled = true;
+    document.getElementById("previewDownload").disabled = true;
     button.textContent = "3D configuration error: " + error.message;
   }
 }
@@ -1404,6 +1538,25 @@ function previewConfigurationSnapshot() {
     configuration.components[index].rotation = vector(node.rotation);
   });
   return configuration;
+}
+
+function downloadPreviewConfiguration() {
+  if (!servoPreview || document.getElementById("previewDownload").disabled) return;
+  if (!commitPreviewComponentName()) return;
+  try {
+    const configuration = previewConfigurationSnapshot();
+    const url = URL.createObjectURL(new Blob([JSON.stringify(configuration, null, 2) + "\n"], { type: "application/json" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "config.json";
+    document.body.append(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    setText("previewSaveStatus", "Current config downloaded, including unsaved changes.");
+  } catch (error) {
+    setText("previewSaveStatus", "Download failed: " + error.message);
+  }
 }
 
 async function saveLocalConfiguration(configuration) {
@@ -1887,10 +2040,11 @@ function drawServoPreview() {
     const camera = points.map(cameraPoint);
     return (servoPreview.perspective ? clipPreviewNearPlane(camera) : camera).map(projectCamera);
   };
-  // Floor clears the bracket below a standard servo at the origin.
-  const floorY = -55;
+  // Grid planes and colored scene axes share the world origin.
+  const floorY = 0;
   const gridExtent = 500;
-  const gridStep = 25;
+  const gridMajorStep = 100;
+  const gridStep = gridMajorStep / 10;
   const gridLine = (start, end, color, lineWidth) => {
     let startCamera = cameraPoint(start), endCamera = cameraPoint(end);
     if (servoPreview.perspective) {
@@ -1906,12 +2060,17 @@ function drawServoPreview() {
     ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]);
     ctx.strokeStyle = color; ctx.lineWidth = lineWidth; ctx.stroke();
   };
+  // At side presets the floor is edge-on; use a vertical background grid.
+  const sideGrid = Math.abs(pitch) < 0.0001 && Math.abs(Math.sin(2 * yaw)) < 0.0001;
+  const gridPoint = (across, up) => sideGrid
+    ? (Math.abs(Math.cos(yaw)) > 0.5 ? [across, up, 0] : [0, up, across])
+    : [across, floorY, up];
   for (let offset = -gridExtent; offset <= gridExtent; offset += gridStep) {
     if (offset === 0) continue;
-    const major = offset % 100 === 0;
+    const major = offset % gridMajorStep === 0;
     const color = major ? "#344959" : "#223340";
-    gridLine([offset, floorY, -gridExtent], [offset, floorY, gridExtent], color, major ? 1 : 0.5);
-    gridLine([-gridExtent, floorY, offset], [gridExtent, floorY, offset], color, major ? 1 : 0.5);
+    gridLine(gridPoint(offset, -gridExtent), gridPoint(offset, gridExtent), color, major ? 1 : 0.5);
+    gridLine(gridPoint(-gridExtent, offset), gridPoint(gridExtent, offset), color, major ? 1 : 0.5);
   }
   gridLine([-gridExtent, floorY, 0], [0, floorY, 0], "#af625d", 1.5);
   gridLine([0, floorY, 0], [gridExtent, floorY, 0], "#d9443c", 2.5);
@@ -2017,6 +2176,25 @@ function openServoSettings(channel) {
   editedServoName = servo.name;
   const fields = document.getElementById("servoSettingsFields");
   fields.replaceChildren();
+  const groups = [
+    ["Servo", ["name", "type", "enabled"]],
+    ["Hardware output", ["address", "channel"]],
+    ["Motion", ["startupAngle", "initialMotionMode", "continuous", "reversed"]],
+    ["Pulse range", ["minPulseMicroseconds", "maxPulseMicroseconds"]],
+    ["Angle range", ["minAngle", "maxAngle"]],
+    ["3D model and attachment", ["model", "parent"]],
+    ["Position (mm)", ["position.x", "position.y", "position.z"]],
+    ["Rotation (degrees)", ["rotation.x", "rotation.y", "rotation.z"]]
+  ];
+  const fieldGroups = new Map();
+  groups.forEach(([title, keys]) => {
+    const group = makeElement("fieldset", "servo-settings-group");
+    group.append(makeElement("legend", "", title));
+    const inputs = makeElement("div", "servo-settings-group-inputs");
+    group.append(inputs);
+    fields.append(group);
+    keys.forEach(key => fieldGroups.set(key, inputs));
+  });
   servoSettingsFields.forEach(([key, text, type, min, max]) => {
     const label = makeElement("label", "", text);
     const input = makeElement(Array.isArray(type) || type === "parent" ? "select" : "input");
@@ -2038,7 +2216,8 @@ function openServoSettings(channel) {
     const value = key.split(".").reduce((current, part) => current?.[part], servo);
     if (type === "checkbox") input.checked = value === true;
     else input.value = value ?? (key.includes(".") ? 0 : key === "initialMotionMode" ? "immediate" : key === "model" ? "standard" : "");
-    label.append(input); fields.append(label);
+    if (type === "checkbox") label.classList.add("servo-settings-checkbox");
+    label.append(input); fieldGroups.get(key).append(label);
   });
   setText("servoSettingsTitle", "Settings: " + servo.name);
   setText("servoSettingsStatus", "");

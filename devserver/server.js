@@ -40,6 +40,10 @@ function validateConfiguration(config) {
 function validateSequence(sequence, servoCount) {
   if (!sequence || typeof sequence.loop !== 'boolean' || (sequence.finish !== undefined && typeof sequence.finish !== 'boolean') || !Array.isArray(sequence.steps) || sequence.steps.length > 32) throw new Error('Expected a loop flag and at most 32 steps.');
   for (const step of sequence.steps) {
+    if (step?.type === 'sequence') {
+      if (!/^[a-j]$/.test(step.slot)) throw new Error('Sequence call target must be a-j.');
+      continue;
+    }
     if (!step || !Array.isArray(step.angles) || step.angles.length !== servoCount ||
         step.angles.some(angle => !Number.isInteger(angle) || angle < 0 || angle > 180) ||
         !Number.isInteger(step.durationMs) || step.durationMs < 100 || step.durationMs > 60000 ||
@@ -59,7 +63,6 @@ function writeJsonFile(file, value) {
 function createServer(dataDirectory = path.resolve(__dirname, '../data')) {
   const root = fs.realpathSync(dataDirectory);
   const configPath = path.join(root, 'config.json');
-  const sequencePath = path.join(root, 'sequence.json');
   const mime = { '.html': 'text/html; charset=utf-8', '.js': 'application/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8' };
   return http.createServer(async (request, response) => {
     const send = (status, text, type = 'text/plain; charset=utf-8') => {
@@ -71,11 +74,15 @@ function createServer(dataDirectory = path.resolve(__dirname, '../data')) {
     try {
       const url = new URL(request.url, 'http://' + host);
       if (request.method === 'GET' && url.pathname === '/api/devserver') return send(200, '{"localConfigServer":true}', mime['.json']);
-      if (url.pathname === '/api/sequence' && (request.method === 'GET' || request.method === 'POST')) {
+      if ((url.pathname === '/api/sequence' || url.pathname.startsWith('/api/sequence/')) && (request.method === 'GET' || request.method === 'POST')) {
+        const slot = url.pathname.startsWith('/api/sequence/') ? url.pathname.slice('/api/sequence/'.length) : url.searchParams.get('slot');
+        if (slot !== null && !/^[a-j]$/.test(slot)) return send(400, 'Sequence slot must be a-j.');
+        const sequencePath = path.join(root, slot === null ? 'sequence.json' : 'sequence_' + slot + '.json');
+        const readPath = slot === 'a' && !fs.existsSync(sequencePath) ? path.join(root, 'sequence.json') : sequencePath;
         const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
         const servoCount = config.components.filter(component => (component.objectType ?? 'Servo') === 'Servo').length;
         if (request.method === 'GET') {
-          const sequence = fs.existsSync(sequencePath) ? JSON.parse(fs.readFileSync(sequencePath, 'utf8')) : { loop: false, steps: [] };
+          const sequence = fs.existsSync(readPath) ? JSON.parse(fs.readFileSync(readPath, 'utf8')) : { loop: false, steps: [] };
           try { validateSequence(sequence, servoCount); } catch (error) { return send(409, error.message); }
           return send(200, JSON.stringify(sequence), mime['.json']);
         }
@@ -93,7 +100,7 @@ function createServer(dataDirectory = path.resolve(__dirname, '../data')) {
           validateSequence(sequence, servoCount);
         } catch (error) { return send(400, error.message); }
         writeJsonFile(sequencePath, sequence);
-        return send(200, 'Saved data/sequence.json on this PC.');
+        return send(200, 'Saved data/' + path.basename(sequencePath) + ' on this PC.');
       }
       if (request.method === 'POST' && url.pathname === '/api/config/local') {
         if (!(request.headers['content-type'] || '').startsWith('application/json')) return send(415, 'Expected application/json.');
@@ -133,6 +140,6 @@ if (require.main === module) {
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('Port must be 1-65535.');
   const server = createServer();
   server.on('error', error => { console.error(error.message); process.exitCode = 1; });
-  server.listen(port, '127.0.0.1', () => console.log('Open http://127.0.0.1:' + port + ' — saves to data/config.json and data/sequence.json. Ctrl+C to stop.'));
+  server.listen(port, '127.0.0.1', () => console.log('Open http://127.0.0.1:' + port + ' — saves config to data/config.json and sequence slots to data/sequence_a.json through data/sequence_j.json. Ctrl+C to stop.'));
 }
 module.exports = { createServer, validateConfiguration };

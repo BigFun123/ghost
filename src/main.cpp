@@ -90,7 +90,7 @@ bool initializeServo(uint8_t index, bool retry) {
 
 #if WIFI_CREDENTIALS_AVAILABLE
 void beginOta() {
-  snprintf(otaHostname, sizeof(otaHostname), "lamp-controller");
+  snprintf(otaHostname, sizeof(otaHostname), "ghost-controller");
   ArduinoOTA.setHostname(otaHostname);
   ArduinoOTA.setPassword(OTA_PASSWORD);
   ArduinoOTA.onStart([]() {
@@ -221,7 +221,7 @@ void setup() {
   } else {
     WiFi.mode(WIFI_STA);
     WiFi.setAutoReconnect(true);
-    snprintf(otaHostname, sizeof(otaHostname), "lamp-controller");
+    snprintf(otaHostname, sizeof(otaHostname), "ghost-controller");
     WiFi.hostname(otaHostname);
     WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
     AppLog::printf("Connecting to Wi-Fi '%s'...\n", WIFI_SSID);

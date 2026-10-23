@@ -59,6 +59,21 @@
   ],
   "components": [
     {
+      "name": "Walker",
+      "objectType": "Null",
+      "parent": null,
+      "position": {
+        "x": 0,
+        "y": 205,
+        "z": 0
+      },
+      "rotation": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      }
+    },
+    {
       "name": "U Bracket Long 1",
       "objectType": "U Bracket Long",
       "parent": "Servo 1",
@@ -77,7 +92,7 @@
       "name": "Servo 1",
       "position": {
         "x": 30,
-        "y": 0,
+        "y": -1,
         "z": 0
       },
       "rotation": {
@@ -104,8 +119,8 @@
     {
       "name": "Servo 2",
       "position": {
-        "x": 33,
-        "y": 0,
+        "x": 35,
+        "y": -1,
         "z": 0
       },
       "rotation": {
@@ -133,7 +148,7 @@
       "name": "Servo 3",
       "position": {
         "x": 30,
-        "y": 0,
+        "y": -1,
         "z": 0
       },
       "rotation": {
@@ -161,7 +176,7 @@
       "name": "Servo 4",
       "position": {
         "x": 35,
-        "y": 0,
+        "y": -1,
         "z": 0
       },
       "rotation": {
@@ -188,17 +203,17 @@
     {
       "name": "Servo 5",
       "position": {
-        "x": 135,
-        "y": 0,
+        "x": -55,
+        "y": 45,
         "z": 0
       },
       "rotation": {
         "x": 0,
-        "y": 0,
-        "z": 0
+        "y": 180,
+        "z": 90
       },
       "model": "micro",
-      "parent": null,
+      "parent": "Walker",
       "enabled": false,
       "initialMotionMode": "immediate",
       "startupAngle": 90,
@@ -211,22 +226,22 @@
       "maxAngle": 360,
       "reversed": false,
       "objectType": "Servo",
-      "continuous": true
+      "continuous": false
     },
     {
       "name": "Servo 6",
       "position": {
-        "x": 185,
-        "y": 0,
+        "x": 55,
+        "y": 45,
         "z": 0
       },
       "rotation": {
         "x": 0,
         "y": 0,
-        "z": 0
+        "z": -90
       },
       "model": "micro",
-      "parent": null,
+      "parent": "Walker",
       "enabled": true,
       "initialMotionMode": "immediate",
       "startupAngle": 90,
@@ -246,7 +261,7 @@
       "objectType": "U Bracket Short",
       "parent": "Walker",
       "position": {
-        "x": 0,
+        "x": -15,
         "y": -35,
         "z": 0
       },
@@ -262,7 +277,7 @@
       "parent": "U Bracket Long 1",
       "position": {
         "x": 65,
-        "y": -7,
+        "y": -5,
         "z": 0
       },
       "rotation": {
@@ -287,26 +302,11 @@
       }
     },
     {
-      "name": "Walker",
-      "objectType": "Null",
-      "parent": null,
-      "position": {
-        "x": 0,
-        "y": 80,
-        "z": 0
-      },
-      "rotation": {
-        "x": 0,
-        "y": 0,
-        "z": 0
-      }
-    },
-    {
       "name": "U Bracket Short 3",
       "objectType": "U Bracket Short",
       "parent": "Walker",
       "position": {
-        "x": 65,
+        "x": 55,
         "y": -35,
         "z": 0
       },
@@ -337,7 +337,7 @@
       "parent": "U Bracket Long 3",
       "position": {
         "x": 65,
-        "y": -7,
+        "y": -5,
         "z": 0
       },
       "rotation": {

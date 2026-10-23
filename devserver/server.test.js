@@ -93,3 +93,35 @@ test('persists local sequences, reloads them, and rejects invalid updates', asyn
     fs.rmSync(directory, { recursive: true, force: true });
   }
 });
+
+
+test('sequence slots stay isolated and preserve robot configuration and legacy sequence', async () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'lamp-slots-'));
+  const config = fs.readFileSync(path.resolve(__dirname, '../data/config.json'), 'utf8');
+  const legacy = { loop: true, steps: [] };
+  fs.writeFileSync(path.join(directory, 'config.json'), config);
+  fs.writeFileSync(path.join(directory, 'sequence.json'), JSON.stringify(legacy));
+  const server = createServer(directory);
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  const base = 'http://127.0.0.1:' + server.address().port + '/api/sequence/';
+  try {
+    assert.deepEqual(await (await fetch(base + 'a')).json(), legacy);
+    for (const slot of 'abcdefghij') {
+      const saved = { loop: slot === 'b', finish: slot === 'j', steps: slot === 'j' ? [{ type: 'sequence', slot: 'b' }] : [] };
+      const response = await fetch(base + slot, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(saved) });
+      assert.equal(response.status, 200);
+      assert.deepEqual(await (await fetch(base + slot)).json(), saved);
+      assert.deepEqual(JSON.parse(fs.readFileSync(path.join(directory, 'sequence_' + slot + '.json'), 'utf8')), saved);
+    }
+    assert.deepEqual(await (await fetch(base + 'a')).json(), { loop: false, finish: false, steps: [] });
+    for (const slot of ['k', '', '../config', 'aa', 'A']) {
+      assert.equal((await fetch(base + encodeURIComponent(slot))).status, 400);
+      assert.equal((await fetch(base + encodeURIComponent(slot), { method: 'POST', body: '{}' })).status, 400);
+    }
+    assert.equal(fs.readFileSync(path.join(directory, 'config.json'), 'utf8'), config);
+    assert.deepEqual(JSON.parse(fs.readFileSync(path.join(directory, 'sequence.json'), 'utf8')), legacy);
+  } finally {
+    await new Promise(resolve => server.close(resolve));
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});

@@ -32,4 +32,4 @@
 - Local edits and builds do not update the physical controller. State clearly whether changes have been uploaded.
 - Upload only when the user requests or has authorized deployment to the device.
 - Frontend assets require a filesystem upload; firmware requires a firmware upload.
-- `nodemcuv2_ota` targets `lamp-controller.local`. `upload_html.ps1` performs an OTA filesystem upload using a machine-specific PlatformIO path; inspect it before use.
+- `nodemcuv2_ota` targets `ghost-controller.local`. `upload_html.ps1` performs an OTA filesystem upload using a machine-specific PlatformIO path; inspect it before use.

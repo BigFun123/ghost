@@ -5,19 +5,24 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="color-scheme" content="dark">
-  <title>GOBOTIC Robot Controller</title>
+  <title>GHOST Robot Controller</title>
   <link rel="stylesheet" href="/style.css">
   <link rel="stylesheet" href="./style.css">
 </head>
 
 <body>
-  <div id="status" role="alert" aria-live="polite">
-    <h1>GOBOTIC Robot Controller</h1>
+  <div id="status">
+    <div class="titlecontainer" id="title">
+    <h2>EPISTEMIC</h2>
+    <h2>|</h2>
+    <h2>GHOST Robot Controller</h2>
+    </div>
+    
     <div class="status-actions">
       <button id="previewToggle" type="button" aria-expanded="true" aria-controls="previewPanel">Deactivate 3D view</button>
       <button id="rebootButton" type="button">Reboot</button>
     </div>
-    <div id="connection">Loading device status…</div>
+
   </div>
   <nav class="tabs" role="tablist" aria-label="Controller pages">
     <button class="tab" id="mixerTab" role="tab" aria-selected="true" aria-controls="mixerPanel" tabindex="0">Servo
@@ -81,14 +86,15 @@
     <div class="panel mixer-layout" id="mixerPanel" role="tabpanel" aria-labelledby="mixerTab">
       <div class="mixer">
         <section class="channel-strip master-strip">
-          <span class="channel-number">MASTER</span>
-          <h2>Master Output</h2>
+          <div class="controller-header">
+            <button class="mix-button servo-center" id="centerButton" type="button" aria-label="Center active servos" title="Center active servos">CA</button>
+            <span class="channel-number">CONTROLLER</span>
+          </div>
           <div class="meter" aria-hidden="true"></div>
-          <div class="channel-readout master-readout" id="macroStatus">Ready</div>          
+
           <div class="master-actions">
             <button class="mix-button sweep-button" id="sweepButton" type="button">SWEEP EACH</button>
             <button class="mix-button sweep-all-button" id="sweepAllButton" type="button">SWEEP ALL</button>
-            <button class="mix-button center-button" id="centerButton" type="button">CENTER ACTIVE</button>
             <button class="mix-button all-off-button" id="allServosOffButton" type="button"
               aria-label="Switch off all servo PWM outputs" aria-pressed="true" title="Switch off all servo PWM outputs">
               <svg class="power-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
@@ -97,41 +103,62 @@
               <span id="servoPowerLabel">ON</span>
             </button>
             <button class="mix-button stop-button" id="stopSweepButton" type="button" disabled>STOP</button>
+            <button class="mix-button" id="sequencerToggle" type="button" aria-expanded="true" aria-controls="sequencerPanel">SEQUENCER</button>
           </div>
-          <div id="macroError" role="alert" class="servo-error"></div>
+
         </section>
-        <section class="channel-strip sequencer-strip" aria-labelledby="sequencerTitle">
+        <section class="channel-strip sequencer-strip" id="sequencerPanel" aria-labelledby="sequencerTitle">
           <span class="channel-number">SEQUENCER</span>
           <h2 id="sequencerTitle">Step Sequencer</h2>          
-          <div class="sequencer-timing">
-            <div>
-          <label class="step-duration-label" for="stepDuration">Step duration</label>
-          <div class="step-duration-control">
-            <input id="stepDuration" type="number" min="100" max="60000" step="100" value="1000">
-            <span>ms</span>
+          <button class="servo-settings-button" id="sequencerSettingsToggle" type="button" aria-label="Step sequencer settings" title="Step sequencer settings" aria-expanded="false" aria-controls="sequencerSettings">&#x2699;</button>
+          <div class="sequence-slots" id="sequenceSlots" role="group" aria-label="Saved sequences">
+            <button type="button" data-slot="a" aria-label="Sequence A" aria-pressed="true" title="sequence_a.json">A</button>
+            <button type="button" data-slot="b" aria-label="Sequence B" aria-pressed="false" title="sequence_b.json">B</button>
+            <button type="button" data-slot="c" aria-label="Sequence C" aria-pressed="false" title="sequence_c.json">C</button>
+            <button type="button" data-slot="d" aria-label="Sequence D" aria-pressed="false" title="sequence_d.json">D</button>
+            <button type="button" data-slot="e" aria-label="Sequence E" aria-pressed="false" title="sequence_e.json">E</button>
+            <button type="button" data-slot="f" aria-label="Sequence F" aria-pressed="false" title="sequence_f.json">F</button>
+            <button type="button" data-slot="g" aria-label="Sequence G" aria-pressed="false" title="sequence_g.json">G</button>
+            <button type="button" data-slot="h" aria-label="Sequence H" aria-pressed="false" title="sequence_h.json">H</button>
+            <button type="button" data-slot="i" aria-label="Sequence I" aria-pressed="false" title="sequence_i.json">I</button>
+            <button type="button" data-slot="j" aria-label="Sequence J" aria-pressed="false" title="sequence_j.json">J</button>
           </div>
+          <div id="sequencerSettings" hidden>
+            <div class="sequencer-timing">
+              <div>
+            <label class="step-duration-label" for="stepDuration">Step duration</label>
+            <div class="step-duration-control">
+              <input id="stepDuration" type="number" min="100" max="60000" step="100" value="2000">
+              <span>ms</span>
             </div>
-            <div>
-          <label class="step-duration-label" for="playbackRate">Playback rate</label>
-          <div class="step-duration-control">
-            <input id="playbackRate" type="number" min="0.001" max="10" step="any" value="1" aria-describedby="playbackRateHelp">
-            <span>×</span>
-          </div>
+              </div>
+              <div>
+            <label class="step-duration-label" for="playbackRate">Playback rate</label>
+            <div class="step-duration-control">
+              <input id="playbackRate" type="number" min="0.001" max="10" step="any" value="1" aria-describedby="playbackRateHelp">
+              <span>×</span>
             </div>
-          </div>
-          <div class="sequence-modes">
-            <label class="loop-setting" for="sequenceLoop"><input id="sequenceLoop" type="checkbox"> Loop</label>
-            <label class="loop-setting" for="sequenceFinish" title="Wait for commanded motion to finish instead of advancing on the step timer"><input id="sequenceFinish" type="checkbox"> Finish</label>
+              </div>
+            </div>
+            <div class="sequence-modes">
+              <label class="loop-setting" for="sequenceLoop"><input id="sequenceLoop" type="checkbox"> Loop</label>
+              <label class="loop-setting" for="sequenceFinish" title="Wait for commanded motion to finish instead of advancing on the step timer"><input id="sequenceFinish" type="checkbox"> Finish</label>
+            </div>
           </div>
           <div class="sequencer-actions">
-            <button class="mix-button write-step-button" id="writeStepButton" type="button">WRITE STEP</button>
+            <button class="mix-button write-step-button" id="writeStepButton" type="button">ADD STEP</button>
             <button class="mix-button play-sequence-button" id="playSequenceButton" type="button" disabled>PLAY</button>
             <button class="mix-button stop-sequence-button" id="stopSequenceButton" type="button" disabled>STOP</button>
             <button class="mix-button clear-sequence-button" id="clearSequenceButton" type="button">CLEAR</button>
           </div>
-          <div class="sequencer-status" id="sequencerStatus" aria-live="polite">Loading saved sequence…</div>
-          <div id="sequencerError" role="alert" class="servo-error"></div>
-          <ol class="sequencer-steps" id="sequencerSteps" aria-label="Saved sequence steps"></ol>
+
+
+          <ol class="sequencer-steps" id="sequencerSteps" aria-label="Saved sequence steps">
+          <li class="sequence-add-actions" id="sequenceAddActions">
+            <button class="mix-button" id="appendSequenceStep" type="button" aria-label="Add motion step" title="Add motion step">+</button>
+            <button class="mix-button" id="appendSequenceCall" type="button" aria-label="Change sequence" title="Change sequence">&gt;</button>
+          </li>
+          </ol>
         </section>
       </div>
       <section id="previewPanel" class="servo-preview" aria-labelledby="previewTitle">
@@ -159,14 +186,20 @@
             <canvas id="servoScene" tabindex="0" aria-label="3D servo setup. Arrow keys orbit; plus and minus zoom."></canvas>
             <output hidden id="previewTransform" class="preview-transform" aria-live="polite" aria-label="Selected servo transform"></output>
           </div>
-          <p id="previewStatus" role="status">Waiting for device angles.</p>
+
           <p class="subtle">Commanded angles, not measured feedback. Grey = unavailable, orange = output off, blue = muted. Parent attachments follow the shaft; 90� is neutral.</p>
         </div>
       </section>
     </div>
     <div class="panel setup-layout" id="setupPanel" role="tabpanel" aria-labelledby="setupTab" hidden>
       <section class="setup-hierarchy">
-        <h2>Components</h2>
+        <div class="setup-components-header">
+          <h2>Components</h2>
+          <div class="setup-config-actions">
+            <button id="previewDownload" type="button">Download config</button>
+            <button id="previewSave" type="button">Save config</button>
+          </div>
+        </div>
         <label>Add component
           <select id="previewAddComponent">
             <option value="">Select component to add...</option>
@@ -186,8 +219,7 @@
         <h2 id="setupSelectedName" contenteditable="plaintext-only" role="textbox" aria-label="Selected component name" aria-multiline="false" spellcheck="false" title="Click to rename. Enter to apply; Escape to cancel.">Component options</h2>
         <div id="setupTransforms" class="setup-transforms"></div>
         <small class="subtle">Positions in mm; rotations in degrees, relative to the parent. Shift-click nudges for 1 mm / 1 degree.</small>
-        <button id="previewSave" type="button">Save config</button>
-        <p id="previewSaveStatus" role="status"></p>
+
         <p class="subtle">Save, restart the controller and reload after adding or removing servos. Review saved sequences after changing the servo list.</p>
       </section>
     </div>
@@ -201,11 +233,24 @@
           <button id="servoSettingsSave" type="submit">Save config</button>
           <button id="servoSettingsBack" type="button">Back to mixer</button>
         </form>
-        <p id="servoSettingsStatus" role="status"></p>
+
       </section>
     </div>
   </main>
-  <p class="note" id="updated"></p>
+
+  <footer id="statusBar" aria-label="Controller status">
+    <div class="status-messages" role="status" aria-live="polite" aria-atomic="false">
+    <span id="connection">Loading device status…</span>
+    <span id="macroStatus">Ready</span>
+    <span id="macroError" class="status-error"></span>
+    <span id="sequencerStatus">Loading saved sequence…</span>
+    <span id="sequencerError" class="status-error"></span>
+    <span id="previewStatus">Waiting for device angles.</span>
+    <span id="previewSaveStatus"></span>
+    <span id="servoSettingsStatus"></span>
+    <span id="updated"></span>
+    </div>
+  </footer>
   <script src="./3dmodels/TD-7120.js" defer></script>
   <script src="./3dmodels/micro9g.js" defer></script>
   <script src="./3dmodels/UBracketShort.js" defer></script>

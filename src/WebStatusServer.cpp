@@ -123,6 +123,11 @@ void WebStatusServer::begin(Pca9685ServoTest* servos,
   server_.on("/api/sequence", HTTP_POST, [this]() {
     saveSequence();
   });
+  for (char slot = 'a'; slot <= 'j'; ++slot) {
+    const String route = String("/api/sequence/") + slot;
+    server_.on(route.c_str(), HTTP_GET, [this]() { sendSequence(); });
+    server_.on(route.c_str(), HTTP_POST, [this]() { saveSequence(); });
+  }
   server_.on("/api/servo", HTTP_POST, [this]() {
     setServoAngle();
   });
@@ -208,13 +213,21 @@ void WebStatusServer::sendLog() {
 }
 
 void WebStatusServer::sendSequence() {
+  const String slot = server_.uri().startsWith("/api/sequence/") ? server_.uri().substring(14) : (server_.hasArg("slot") ? server_.arg("slot") : String());
+  if (server_.hasArg("slot") && (slot.length() != 1 || slot[0] < 'a' || slot[0] > 'j')) {
+    server_.send(400, "text/plain; charset=utf-8", "Sequence slot must be a-j");
+    return;
+  }
+  const String sequencePath = slot.length() ? String("/sequence_") + slot + ".json" : String("/sequence.json");
   if (!filesystemReady_) {
     server_.send(503, "text/plain; charset=utf-8",
                  "Sequence storage unavailable: LittleFS is not mounted");
     return;
   }
 
-  File file = LittleFS.open("/sequence.json", "r");
+  const String readPath = slot == "a" && !LittleFS.exists(sequencePath)
+      ? String("/sequence.json") : sequencePath;
+  File file = LittleFS.open(readPath, "r");
   if (!file) {
     server_.sendHeader("Cache-Control", "no-store");
     server_.send(200, "application/json; charset=utf-8",
@@ -253,6 +266,14 @@ void WebStatusServer::sendSequence() {
 
   const JsonArrayConst steps = document["steps"].as<JsonArrayConst>();
   for (JsonObjectConst step : steps) {
+    if (step["type"].is<const char*>() && String(step["type"].as<const char*>()) == "sequence") {
+      const String target = step["slot"].is<const char*>() ? String(step["slot"].as<const char*>()) : String();
+      if (target.length() != 1 || target[0] < 'a' || target[0] > 'j') {
+        server_.send(400, "text/plain; charset=utf-8", "Sequence call target must be a-j");
+        return;
+      }
+      continue;
+    }
     const JsonArrayConst angles = step["angles"].as<JsonArrayConst>();
     const JsonArrayConst servoStates =
         step["servoStates"].as<JsonArrayConst>();
@@ -295,6 +316,12 @@ void WebStatusServer::sendSequence() {
 }
 
 void WebStatusServer::saveSequence() {
+  const String slot = server_.uri().startsWith("/api/sequence/") ? server_.uri().substring(14) : (server_.hasArg("slot") ? server_.arg("slot") : String());
+  if (server_.hasArg("slot") && (slot.length() != 1 || slot[0] < 'a' || slot[0] > 'j')) {
+    server_.send(400, "text/plain; charset=utf-8", "Sequence slot must be a-j");
+    return;
+  }
+  const String sequencePath = slot.length() ? String("/sequence_") + slot + ".json" : String("/sequence.json");
   if (rebootPending_) {
     server_.send(503, "text/plain; charset=utf-8", "Controller is rebooting");
     return;
@@ -332,6 +359,14 @@ void WebStatusServer::saveSequence() {
   }
 
   for (JsonObjectConst step : steps) {
+    if (step["type"].is<const char*>() && String(step["type"].as<const char*>()) == "sequence") {
+      const String target = step["slot"].is<const char*>() ? String(step["slot"].as<const char*>()) : String();
+      if (target.length() != 1 || target[0] < 'a' || target[0] > 'j') {
+        server_.send(400, "text/plain; charset=utf-8", "Sequence call target must be a-j");
+        return;
+      }
+      continue;
+    }
     const JsonArrayConst angles = step["angles"].as<JsonArrayConst>();
     const JsonArrayConst servoStates =
         step["servoStates"].as<JsonArrayConst>();
@@ -372,7 +407,7 @@ void WebStatusServer::saveSequence() {
     }
   }
 
-  File file = LittleFS.open("/sequence.json.tmp", "w");
+  File file = LittleFS.open(sequencePath + ".tmp", "w");
   if (!file) {
     AppLog::println("Could not open temporary sequence file for writing.");
     server_.send(500, "text/plain; charset=utf-8",
@@ -382,7 +417,7 @@ void WebStatusServer::saveSequence() {
   const size_t bytesWritten = serializeJson(document, file);
   file.close();
   if (bytesWritten != measureJson(document) ||
-      !LittleFS.rename("/sequence.json.tmp", "/sequence.json")) {
+      !LittleFS.rename(sequencePath + ".tmp", sequencePath)) {
     AppLog::println("Could not save sequence file.");
     server_.send(500, "text/plain; charset=utf-8",
                  "Could not save sequence storage");

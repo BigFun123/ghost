@@ -103,6 +103,15 @@ dd {
     margin-top: 16px
 }
 
+.titlecontainer {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    margin-bottom: 8px
+}
+
 #serialLog {
     box-sizing: border-box;
     width: 100%;
@@ -482,9 +491,9 @@ dd {
 }
 
 .sequencer-steps {
-    flex: 1;
+    flex: 1 1 0;
+    height: 0;
     min-height: 0;
-    max-height: 210px;
     overflow-y: auto;
     margin: 8px 0 0;
     padding-left: 0;
@@ -497,7 +506,20 @@ dd {
 }
 
 .sequencer-steps li[aria-current=step] {
-    color: #a1f0bf
+    color: #a1f0bf;
+    background: #205547;
+    border-radius: 4px;
+    box-shadow: inset 3px 0 #5ce0b0, inset 0 0 0 1px #5ce0b0;
+}
+.sequencer-steps li[aria-current=step] .mix-button:disabled,
+.sequencer-steps li[aria-current=step] input:disabled,
+.sequencer-steps li[aria-current=step] select:disabled {
+    opacity: 1;
+}
+.sequencer-steps li[aria-current=step] .sequence-step-select {
+    background: #28765e;
+    border-color: #5ce0b0;
+    color: #fff;
 }
 
 .sequencer-step-row {
@@ -597,7 +619,7 @@ dd {
 #previewWindow[hidden] { display: none; }
 .servo-preview p { font-size: .85rem; margin: 10px 0; }
 
-.mixer-layout { display: grid; grid-template-columns: minmax(0, 3fr) minmax(320px, 2fr); gap: 12px; align-items: start; }
+.mixer-layout { display: grid; grid-template-columns: minmax(0, 3fr) minmax(320px, 2fr); gap: 12px; }
 .mixer-layout > .mixer { min-width: 0; }
 .mixer-layout > .servo-preview { min-width: 0; margin: 4px 0; position: sticky; top: 8px; }
 .preview-mode { display: block; margin-top: 12px; font-size: .85rem; }
@@ -634,7 +656,15 @@ dd {
 .channel-strip { position: relative; }
 .servo-settings-button { position: absolute; top: 5px; right: 5px; border: 1px solid #537183; border-radius: 4px; background: #263746; color: #e8edf2; padding: 2px 6px; cursor: pointer; font-size: 15px; }
 .servo-settings { padding: 18px; max-width: 850px; margin-top: 12px; }
-.servo-settings-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; margin: 16px 0; }
+.servo-settings-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 16px; margin: 16px 0; align-items: start; }
+.servo-settings-group { min-width: 0; margin: 0; padding: 12px; border: 1px solid #3a4853; border-radius: 6px; background: #111b24; }
+.servo-settings-group legend { padding: 0 6px; color: #a1f0bf; font-weight: 600; font-size: .9rem; }
+.servo-settings-group-inputs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.servo-settings-group-inputs label { min-width: 0; }
+.servo-settings-group-inputs input, .servo-settings-group-inputs select { min-width: 0; box-sizing: border-box; width: 100%; }
+.servo-settings-fields .servo-settings-checkbox { flex-direction: row-reverse; align-items: center; justify-content: flex-end; align-self: end; }
+.servo-settings-group-inputs input[type="checkbox"] { width: auto; margin: 0; align-self: center; }
+@media (max-width: 420px) { .servo-settings-group-inputs { grid-template-columns: minmax(0, 1fr); } }
 .servo-settings-fields label { display: flex; flex-direction: column; gap: 5px; font-size: .9rem; }
 .servo-settings-fields input, .servo-settings-fields select { background: #0d1822; color: #e8edf2; padding: 7px; border: 1px solid #537183; border-radius: 4px; }
 .servo-settings-fields input[type="checkbox"] { align-self: start; }
@@ -659,6 +689,10 @@ dd {
 .setup-layout { display: grid; grid-template-columns: minmax(170px, 1fr) minmax(340px, 1.2fr) minmax(320px, 2.4fr); gap: 12px; align-items: start; }
 .setup-layout[hidden] { display: none; }
 .setup-layout > section { min-width: 0; margin: 4px 0; padding: 12px; }
+.setup-components-header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+.setup-components-header h2 { margin: 0; }
+.setup-config-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-left: auto; }
+.setup-config-actions button { flex-shrink: 0; min-height: 48px; padding: 12px 18px; font: inherit; font-weight: 600; cursor: pointer; }
 .component-tree, .component-tree ul { list-style: none; padding-left: 16px; }
 .component-tree { padding-left: 0; }
 .component-tree li { margin: 5px 0; }
@@ -704,3 +738,44 @@ dd {
 .preview-labels-toggle { display: inline-flex; align-items: center; gap: 4px; align-self: center; font-size: .72rem; white-space: nowrap; }
 
 .sequence-modes { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+
+
+/* Keep status messages visible across tabs without taking space from controls. */
+body { padding-bottom: calc(36px + env(safe-area-inset-bottom, 0px)); }
+#statusBar {
+    position: fixed;
+    inset: auto 0 0;
+    z-index: 1000;
+    padding: 5px 10px calc(5px + env(safe-area-inset-bottom, 0px));
+    border-top: 1px solid #2b3945;
+    background: #111b24;
+    color: #aebbc6;
+    font-size: 12px;
+    line-height: 18px;
+}
+.status-messages {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    overflow-x: auto;
+    white-space: nowrap;
+    scrollbar-width: thin;
+}
+.status-messages > * { flex: 0 0 auto; margin: 0; padding: 0; min-height: 0; }
+.status-messages > :empty { display: none; }
+#statusBar #connection { padding: 0; background: none; border-radius: 0; }
+#statusBar #sequencerStatus { color: #a1f0bf; }
+#statusBar .status-error, #statusBar .servo-error { color: #ff9d9d; font-size: inherit; }
+
+.sequence-slots { display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 3px; margin: 4px 0 8px; }
+.sequence-slots button { min-width: 0; padding: 4px 0; border: 1px solid #537183; border-radius: 3px; background: #263746; color: #e8edf2; font: inherit; font-size: 11px; cursor: pointer; }
+.sequence-slots button[aria-pressed="true"] { background: #205547; border-color: #5ce0b0; color: #fff; }
+
+.sequence-add-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 6px; }
+.sequence-step-target { min-width: 0; width: 90px; background: #11181e; color: #e8edf2; border: 1px solid #5a6872; border-radius: 4px; padding: 6px; font: inherit; }
+
+#sequencerPanel[hidden] { display: none; }
+#sequencerToggle[aria-expanded="true"] { background: #205547; border-color: #5ce0b0; color: #fff; }
+
+.controller-header { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; align-self: stretch; }
+.master-strip #centerButton { position: static; flex: 0 0 37px; width: 34px; box-sizing: border-box; }
