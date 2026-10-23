@@ -24,6 +24,9 @@ test('serves local assets and saves only valid same-origin config requests', asy
     assert.equal((await fetch(base + '/api/servo', { method: 'POST' })).status, 404);
     const originalNames = configuration.components.map(component => component.name);
     configuration.components.push({ name: 'Null local test', objectType: 'Null', parent: null, position: { x: 1, y: 2, z: 3 }, rotation: { x: 0, y: 0, z: 0 } });
+    configuration.camera = { yaw: 0.5, pitch: 0.25, roll: 0.1, zoom: 1.5, panX: 10, panY: 20, panZ: -30, perspective: true,
+      webcam: { active: true, deviceId: 'test-camera', fit: 'contain', mirror: true, controls: { zoom: 2, focusMode: 'manual' } } };
+    configuration.camera.views = { u2: { yaw: -0.4, pitch: 0.1, roll: 0, zoom: 2, panX: 1, panY: 2, panZ: 3, perspective: false } };
     const patch = { configuration, originalNames };
     assert.equal((await post(patch, { Origin: 'https://example.com' })).status, 403);
     const badHostStatus = await new Promise((resolve, reject) => {
@@ -39,6 +42,11 @@ test('serves local assets and saves only valid same-origin config requests', asy
     assert.equal((await post(patch)).status, 409);
     const saved = fs.readFileSync(path.join(directory, 'config.json'), 'utf8');
     patch.originalNames = configuration.components.map(component => component.name);
+    const camera = configuration.camera;
+    configuration.camera = { ...camera, zoom: -1 };
+    assert.equal((await post(patch)).status, 400);
+    assert.equal(fs.readFileSync(path.join(directory, 'config.json'), 'utf8'), saved);
+    configuration.camera = camera;
     configuration.components.at(-1).parent = 'Null local test';
     assert.equal((await post(patch)).status, 400);
     assert.equal(fs.readFileSync(path.join(directory, 'config.json'), 'utf8'), saved);

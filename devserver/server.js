@@ -4,6 +4,19 @@ const path = require('node:path');
 
 function validateConfiguration(config) {
   if (!config || !Array.isArray(config.components) || !config.components.length || config.components.length > 60) throw new Error('Expected 1-60 components.');
+  if (config.camera !== undefined) {
+    const camera = config.camera;
+    if (!camera || ['yaw', 'pitch', 'roll', 'zoom', 'panX', 'panY', 'panZ'].some(key => !Number.isFinite(camera[key])) ||
+        Math.abs(camera.pitch) > Math.PI / 2 || camera.zoom < 0.2 || camera.zoom > 5 || typeof camera.perspective !== 'boolean') throw new Error('Invalid camera view settings.');
+    if (camera.views !== undefined && (!camera.views || Array.isArray(camera.views) || typeof camera.views !== 'object' ||
+        Object.entries(camera.views).some(([slot, view]) => !['u1', 'u2', 'u3'].includes(slot) || !view ||
+          ['yaw', 'pitch', 'roll', 'zoom', 'panX', 'panY', 'panZ'].some(key => !Number.isFinite(view[key])) ||
+          Math.abs(view.pitch) > Math.PI / 2 || view.zoom < 0.2 || view.zoom > 5 || typeof view.perspective !== 'boolean'))) throw new Error('Invalid saved camera view.');
+    const webcam = camera.webcam;
+    if (!webcam || (webcam.active !== undefined && typeof webcam.active !== 'boolean') || typeof webcam.deviceId !== 'string' || webcam.deviceId.length > 512 || !['cover', 'contain'].includes(webcam.fit) || typeof webcam.mirror !== 'boolean' ||
+        !webcam.controls || Array.isArray(webcam.controls) || typeof webcam.controls !== 'object' || Object.keys(webcam.controls).length > 24 ||
+        Object.entries(webcam.controls).some(([key, value]) => key.length > 31 || !(typeof value === 'boolean' || typeof value === 'number' && Number.isFinite(value) || typeof value === 'string' && value.length <= 64))) throw new Error('Invalid webcam settings.');
+  }
   const names = new Map(), outputs = new Set();
   let servos = 0;
   for (const component of config.components) {

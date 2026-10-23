@@ -649,7 +649,7 @@ dd {
 }
 
 #status { flex-wrap: wrap; }
-#previewToggle, #rebootButton { background: #263746; color: #e8edf2; border: 1px solid #537183; border-radius: 4px; padding: 7px 12px; cursor: pointer; font: inherit; }
+#rebootButton, #webcamToggle { background: #263746; color: #e8edf2; border: 1px solid #537183; border-radius: 4px; padding: 7px 12px; cursor: pointer; font: inherit; }
 #previewPanel[hidden] { display: none; }
 .mixer-layout.preview-hidden { grid-template-columns: minmax(0, 1fr); }
 
@@ -775,7 +775,28 @@ body { padding-bottom: calc(36px + env(safe-area-inset-bottom, 0px)); }
 .sequence-step-target { min-width: 0; width: 90px; background: #11181e; color: #e8edf2; border: 1px solid #5a6872; border-radius: 4px; padding: 6px; font: inherit; }
 
 #sequencerPanel[hidden] { display: none; }
-#sequencerToggle[aria-expanded="true"] { background: #205547; border-color: #5ce0b0; color: #fff; }
+#sequencerToggle[aria-expanded="true"], #previewToggle[aria-expanded="true"] { background: #205547; border-color: #5ce0b0; color: #fff; }
 
 .controller-header { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; align-self: stretch; }
 .master-strip #centerButton { position: static; flex: 0 0 37px; width: 34px; box-sizing: border-box; }
+
+#webcamVideo { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; border-radius: 4px; pointer-events: none; }
+#webcamVideo[hidden] { display: none; }
+#servoScene { position: relative; }
+#webcamToggle[aria-pressed="true"] { background: #205547; border-color: #5ce0b0; }
+#webcamToggle:disabled { opacity: .5; cursor: wait; }
+
+.setup-transforms .camera-control-group { grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); border-radius: 4px; }
+.camera-control-group label { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.camera-adjustment { display: grid; grid-template-columns: 26px minmax(0, 1fr) 26px; align-items: center; gap: 3px; }
+.camera-adjustment button { padding: 6px 0; }
+.camera-adjustment input { margin: 0; min-width: 0; }
+#setupWebcamControls { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
+#setupWebcamControls input, #setupWebcamControls select { box-sizing: border-box; min-width: 0; width: 100%; padding: 6px; background: #0d1822; color: #e8edf2; border: 1px solid #537183; border-radius: 4px; }
+#setupWebcamControls .camera-checkbox { flex-direction: row-reverse; justify-content: flex-end; align-items: center; }
+#setupWebcamControls input[type="checkbox"] { width: auto; }
+#setupWebcamControls p { grid-column: 1 / -1; }
+
+#previewGrid[aria-pressed="true"] { background: #205547; border-color: #5ce0b0; }
+
+#previewUserViews button[aria-pressed="true"] { background: #205547; border-color: #5ce0b0; }

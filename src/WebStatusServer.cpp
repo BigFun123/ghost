@@ -15,6 +15,46 @@ constexpr uint32_t kMaximumStepDurationMilliseconds = 60000;
 constexpr size_t kMaximumSequenceFileBytes = 8192;
 constexpr unsigned long kServoPositionSaveDelayMilliseconds = 5000;
 
+bool validCameraSettings(JsonVariantConst value) {
+  if (!value.is<JsonObjectConst>()) return false;
+  const JsonObjectConst camera = value.as<JsonObjectConst>();
+  for (const char* key : {"yaw", "pitch", "roll", "zoom", "panX", "panY", "panZ"}) {
+    if (!camera[key].is<double>() || !isfinite(camera[key].as<double>())) return false;
+  }
+  if (fabs(camera["pitch"].as<double>()) > 1.570796326795 ||
+      camera["zoom"].as<double>() < 0.2 || camera["zoom"].as<double>() > 5 || !camera["perspective"].is<bool>()) return false;
+  if (!camera["views"].isUnbound()) {
+    if (!camera["views"].is<JsonObjectConst>()) return false;
+    for (JsonPairConst entry : camera["views"].as<JsonObjectConst>()) {
+      const String slot = entry.key().c_str();
+      if (slot != "u1" && slot != "u2" && slot != "u3") return false;
+      const JsonObjectConst view = entry.value().as<JsonObjectConst>();
+      if (view.isNull()) return false;
+      for (const char* key : {"yaw", "pitch", "roll", "zoom", "panX", "panY", "panZ"}) {
+        if (!view[key].is<double>() || !isfinite(view[key].as<double>())) return false;
+      }
+      if (fabs(view["pitch"].as<double>()) > 1.570796326795 || view["zoom"].as<double>() < 0.2 ||
+          view["zoom"].as<double>() > 5 || !view["perspective"].is<bool>()) return false;
+    }
+  }
+  const JsonObjectConst webcam = camera["webcam"].as<JsonObjectConst>();
+  if (webcam.isNull() || (!webcam["active"].isUnbound() && !webcam["active"].is<bool>()) || !webcam["deviceId"].is<const char*>() || strlen(webcam["deviceId"].as<const char*>()) > 512 ||
+      !webcam["mirror"].is<bool>()) return false;
+  const String fit = webcam["fit"] | "";
+  if (fit != "cover" && fit != "contain") return false;
+  const JsonObjectConst controls = webcam["controls"].as<JsonObjectConst>();
+  if (controls.isNull() || controls.size() > 24) return false;
+  for (JsonPairConst entry : controls) {
+    if (strlen(entry.key().c_str()) > 31) return false;
+    JsonVariantConst setting = entry.value();
+    if (setting.is<bool>()) continue;
+    if (setting.is<double>() && isfinite(setting.as<double>())) continue;
+    if (setting.is<const char*>() && strlen(setting.as<const char*>()) <= 64) continue;
+    return false;
+  }
+  return true;
+}
+
 void appendJsonString(String& json, const String& value) {
   static const char hexDigits[] = "0123456789abcdef";
   json += '"';
@@ -440,6 +480,7 @@ void WebStatusServer::saveServoConfiguration() {
   if (body.length() > 4096) { fail(413, "Servo settings too large"); return; }
   JsonDocument request;
   if (deserializeJson(request, body)) { fail(400, "Invalid settings JSON"); return; }
+  if (!request["camera"].isUnbound() && !validCameraSettings(request["camera"])) { fail(400, "Invalid camera settings"); return; }
   const char* originalName = request["originalName"] | "";
   const JsonObjectConst update = request["servo"].as<JsonObjectConst>();
   if (!originalName[0] || update.isNull()) { fail(400, "Missing servo settings"); return; }
@@ -523,6 +564,7 @@ void WebStatusServer::saveServoConfiguration() {
       target["minAngle"].as<double>() > target["maxAngle"].as<double>()) {
     fail(400, "Invalid servo model, mode, flags or angle limits"); return;
   }
+  if (!request["camera"].isUnbound()) config["camera"].set(request["camera"]);
   const size_t expected = measureJson(config);
   if (expected > 24576) { fail(413, "Config too large"); return; }
   File output = LittleFS.open("/config.json.tmp", "w");
@@ -599,6 +641,10 @@ void WebStatusServer::savePreviewConfiguration() {
     if (!update["originalName"].isUnbound() && !update["originalName"].isNull() && added["name"].isNull()) {
       fail(409, "Component changed; reload the page"); return;
     }
+  }
+  if (!patch["camera"].isUnbound()) {
+    if (!validCameraSettings(patch["camera"])) { fail(400, "Invalid camera settings"); return; }
+    config["camera"].set(patch["camera"]);
   }
   config["components"].set(newEntries);
   entries = config["components"].as<JsonArray>();

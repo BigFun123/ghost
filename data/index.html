@@ -19,7 +19,6 @@
     </div>
     
     <div class="status-actions">
-      <button id="previewToggle" type="button" aria-expanded="true" aria-controls="previewPanel">Deactivate 3D view</button>
       <button id="rebootButton" type="button">Reboot</button>
     </div>
 
@@ -104,6 +103,7 @@
             </button>
             <button class="mix-button stop-button" id="stopSweepButton" type="button" disabled>STOP</button>
             <button class="mix-button" id="sequencerToggle" type="button" aria-expanded="true" aria-controls="sequencerPanel">SEQUENCER</button>
+            <button class="mix-button" id="previewToggle" type="button" aria-expanded="true" aria-controls="previewPanel">Deactivate 3D view</button>
           </div>
 
         </section>
@@ -175,14 +175,20 @@
               <button id="previewProjection" type="button" aria-pressed="false" title="Toggle perspective projection">Orthographic</button>
               <button id="previewReset" type="button" title="Reset camera">Reset camera</button>
             </div>
+            <button id="previewGrid" type="button" aria-pressed="true" title="Show or hide the grid">Grid</button>
             <label class="preview-labels-toggle"><input id="previewLabels" type="checkbox"> Labels</label>
-            <button id="previewEdit" type="button" aria-pressed="false" aria-expanded="false" aria-controls="previewEditingControls previewTransform">Edit</button>
+            <div id="previewUserViews" class="preview-camera-views" role="group" aria-label="Saved user views">
+              <button type="button" data-user-view="u1" aria-pressed="false" title="Recall U1; Shift-click to store the current view, then Save config">U1</button>
+              <button type="button" data-user-view="u2" aria-pressed="false" title="Recall U2; Shift-click to store the current view, then Save config">U2</button>
+              <button type="button" data-user-view="u3" aria-pressed="false" title="Recall U3; Shift-click to store the current view, then Save config">U3</button>
+            </div>
           </div>
         </div>
         <label class="preview-mode"><input id="previewOffline" type="checkbox"> Offline simulation (no device commands)</label>
         <div id="previewWindow">
           <p>Left-drag to orbit / Right-drag to pan / Scroll to zoom</p>
           <div class="preview-viewport">
+            <video id="webcamVideo" autoplay muted playsinline hidden aria-label="Live webcam background"></video>
             <canvas id="servoScene" tabindex="0" aria-label="3D servo setup. Arrow keys orbit; plus and minus zoom."></canvas>
             <output hidden id="previewTransform" class="preview-transform" aria-live="polite" aria-label="Selected servo transform"></output>
           </div>
@@ -217,7 +223,12 @@
       </section>
       <section id="previewEditingControls" class="setup-options">
         <h2 id="setupSelectedName" contenteditable="plaintext-only" role="textbox" aria-label="Selected component name" aria-multiline="false" spellcheck="false" title="Click to rename. Enter to apply; Escape to cancel.">Component options</h2>
-        <div id="setupTransforms" class="setup-transforms"></div>
+        <div id="setupTransforms" class="setup-transforms">
+          <fieldset id="setupWebcamControls" hidden>
+            <legend>Webcam</legend>
+            <button id="webcamToggle" type="button" aria-pressed="false" aria-controls="webcamVideo">Activate webcam</button>
+          </fieldset>
+        </div>
         <small class="subtle">Positions in mm; rotations in degrees, relative to the parent. Shift-click nudges for 1 mm / 1 degree.</small>
 
         <p class="subtle">Save, restart the controller and reload after adding or removing servos. Review saved sequences after changing the servo list.</p>
@@ -245,6 +256,7 @@
     <span id="macroError" class="status-error"></span>
     <span id="sequencerStatus">Loading saved sequence…</span>
     <span id="sequencerError" class="status-error"></span>
+    <span id="webcamStatus"></span>
     <span id="previewStatus">Waiting for device angles.</span>
     <span id="previewSaveStatus"></span>
     <span id="servoSettingsStatus"></span>

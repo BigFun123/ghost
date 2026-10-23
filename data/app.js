@@ -3,6 +3,81 @@ const setText = (id, value) => {
   if (element) element.textContent = value;
 };
 const formatMegabytes = bytes => (bytes / 1000000).toFixed(3) + " MB";
+const webcamToggle = document.getElementById("webcamToggle");
+const webcamVideo = document.getElementById("webcamVideo");
+let webcamStream = null;
+let webcamRequestId = 0;
+let selectedWebcamDevice = "";
+let savedWebcamControls = {};
+
+function stopWebcam() {
+  webcamRequestId++;
+  const stream = webcamStream;
+  webcamStream = null;
+  if (stream) stream.getTracks().forEach(track => track.stop());
+  webcamVideo.srcObject = null;
+  webcamVideo.hidden = true;
+  webcamToggle.setAttribute("aria-pressed", "false");
+  webcamToggle.textContent = "Activate webcam";
+  setText("webcamStatus", "Webcam off");
+  if (previewReady) drawServoPreview();
+  refreshSetupWebcamControls();
+}
+
+async function startWebcam(deviceId = selectedWebcamDevice) {
+  if (webcamStream) stopWebcam();
+  if (deviceId !== selectedWebcamDevice) savedWebcamControls = {};
+  selectedWebcamDevice = deviceId;
+  const requestId = ++webcamRequestId;
+  webcamToggle.disabled = true;
+  refreshSetupWebcamControls();
+  setText("webcamStatus", "Requesting webcam access…");
+  try {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      throw new Error(window.isSecureContext
+        ? "This browser does not support webcam access."
+        : "Webcam access requires HTTPS or localhost. Open the local devserver on localhost to use it.");
+    }
+    if (!previewReady) throw new Error("The 3D view must finish loading before activating the webcam.");
+    const stream = await navigator.mediaDevices.getUserMedia({ video: deviceId ? { deviceId: { exact: deviceId } } : true, audio: false });
+    if (requestId !== webcamRequestId) { stream.getTracks().forEach(track => track.stop()); return; }
+    webcamStream = stream;
+    let controlsWarning = "";
+    try {
+      const { width, height, frameRate, ...advanced } = savedWebcamControls;
+      const constraints = {};
+      for (const [key, value] of Object.entries({ width, height, frameRate })) {
+        if (value !== undefined) constraints[key] = { ideal: value };
+      }
+      if (Object.keys(advanced).length) constraints.advanced = [advanced];
+      if (Object.keys(constraints).length) await stream.getVideoTracks()[0].applyConstraints(constraints);
+    } catch (error) { controlsWarning = "; saved controls unavailable: " + error.message; }
+    if (requestId !== webcamRequestId) return;
+    stream.getVideoTracks().forEach(track => track.addEventListener("ended", () => {
+      if (webcamStream === stream) stopWebcam();
+    }));
+    webcamVideo.srcObject = stream;
+    await webcamVideo.play();
+    if (requestId !== webcamRequestId) return;
+    webcamVideo.hidden = false;
+    if (!servoPreview.active) document.getElementById("previewToggle").click();
+    webcamToggle.setAttribute("aria-pressed", "true");
+    webcamToggle.textContent = "Deactivate webcam";
+    setText("webcamStatus", "Webcam active" + controlsWarning);
+    drawServoPreview();
+  } catch (error) {
+    if (requestId !== webcamRequestId) return;
+    stopWebcam();
+    setText("webcamStatus", "Webcam: " + error.message);
+  } finally {
+    webcamToggle.disabled = false;
+    refreshSetupWebcamControls();
+  }
+}
+webcamToggle.addEventListener("click", () => webcamStream ? stopWebcam() : startWebcam());
+window.addEventListener("pagehide", stopWebcam);
+navigator.mediaDevices?.addEventListener?.("devicechange", () => refreshSetupWebcamControls());
+
 const tabs = [
   { button: document.getElementById("overviewTab"), panel: document.getElementById("overviewPanel") },
   { button: document.getElementById("mixerTab"), panel: document.getElementById("mixerPanel") },
@@ -104,7 +179,6 @@ function selectTab(selected) {
   if (typeof previewReady !== "undefined" && previewReady) {
     servoPreview.editing = selected === 3;
     document.getElementById("previewTransform").hidden = selected !== 3;
-    document.getElementById("previewEdit").hidden = selected === 3;
     document.getElementById("previewPanel").hidden = selected === 3 ? false : !servoPreview.active;
   }
   tabs.forEach(({ button, panel }, index) => {
@@ -1370,15 +1444,15 @@ function tickServoSimulation() {
 
 // Small software 3D renderer: local assets only, no GPU/library dependency.
 let servoPreview = null;
-function loadPreviewCamera() {
+function loadPreviewCamera(configuration = {}) {
   try {
-    const camera = JSON.parse(localStorage.getItem("servoPreviewCamera"));
+    const camera = configuration.camera || JSON.parse(localStorage.getItem("servoPreviewCamera"));
     if (!camera || ![camera.yaw, camera.pitch, camera.zoom].every(Number.isFinite)) return {};
-    return { yaw: camera.yaw, pitch: clampPreviewPitch(camera.pitch),
+    return { yaw: camera.yaw, pitch: clampPreviewPitch(camera.pitch), roll: Number.isFinite(camera.roll) ? camera.roll : 0,
       zoom: Math.max(0.2, Math.min(5, camera.zoom)),
       panX: Number.isFinite(camera.panX) ? camera.panX : 0,
       panY: Number.isFinite(camera.panY) ? camera.panY : 0,
-      panZ: Number.isFinite(camera.panZ) ? camera.panZ : 0, perspective: camera.perspective === true };
+      panZ: Number.isFinite(camera.panZ) ? camera.panZ : 0, perspective: camera.perspective === true, showGrid: camera.showGrid !== false };
   } catch (_) {
     return {};
   }
@@ -1386,9 +1460,61 @@ function loadPreviewCamera() {
 
 function savePreviewCamera() {
   if (!servoPreview) return;
-  const { yaw, pitch, zoom, panX, panY, panZ, perspective } = servoPreview;
-  try { localStorage.setItem("servoPreviewCamera", JSON.stringify({ yaw, pitch, zoom, panX, panY, panZ, perspective })); }
+  const { yaw, pitch, roll, zoom, panX, panY, panZ, perspective, showGrid } = servoPreview;
+  try { localStorage.setItem("servoPreviewCamera", JSON.stringify({ yaw, pitch, roll, zoom, panX, panY, panZ, perspective, showGrid })); }
   catch (_) { /* Camera controls still work when browser storage is unavailable. */ }
+}
+
+function currentUserCameraView() {
+  const { yaw, pitch, roll, zoom, panX, panY, panZ, perspective } = servoPreview;
+  return { yaw, pitch, roll: roll || 0, zoom, panX, panY, panZ, perspective };
+}
+
+function validUserCameraView(view) {
+  return view && ["yaw", "pitch", "roll", "zoom", "panX", "panY", "panZ"].every(key => Number.isFinite(view[key])) &&
+    Math.abs(view.pitch) <= Math.PI / 2 && view.zoom >= 0.2 && view.zoom <= 5 && typeof view.perspective === "boolean";
+}
+
+function updateUserCameraButtons() {
+  if (!servoPreview) return;
+  const current = currentUserCameraView();
+  document.querySelectorAll("[data-user-view]").forEach(button => {
+    const saved = servoPreview.userViews?.[button.dataset.userView];
+    const active = !!saved && Object.keys(current).every(key => typeof current[key] === "number"
+      ? Math.abs(current[key] - saved[key]) < 0.000001 : current[key] === saved[key]);
+    button.setAttribute("aria-pressed", String(active));
+  });
+}
+
+function initializeUserCameraViews(configuration) {
+  servoPreview.userViews = {};
+  for (const slot of ["u1", "u2", "u3"]) {
+    const saved = configuration.camera?.views?.[slot];
+    if (validUserCameraView(saved)) servoPreview.userViews[slot] = Object.fromEntries(Object.keys(currentUserCameraView()).map(key => [key, saved[key]]));
+  }
+  document.querySelectorAll("[data-user-view]").forEach(button => {
+    button.addEventListener("click", event => {
+      const slot = button.dataset.userView;
+      if (event.shiftKey) {
+        if (document.getElementById("previewSave").disabled) return;
+        servoPreview.userViews[slot] = currentUserCameraView();
+        updateUserCameraButtons();
+        setText("previewSaveStatus", slot.toUpperCase() + " stored. Use Save config in Setup to keep this view.");
+        return;
+      }
+      const saved = servoPreview.userViews[slot];
+      if (!saved) {
+        setText("previewSaveStatus", slot.toUpperCase() + " has no saved view. Shift-click its button to store the current view.");
+        return;
+      }
+      Object.assign(servoPreview, saved);
+      updatePreviewProjectionButton();
+      savePreviewCamera();
+      drawServoPreview();
+      setText("previewStatus", "View " + slot.toUpperCase());
+    });
+  });
+  updateUserCameraButtons();
 }
 
 function initializeServoPreview(configurations, configuration = { components: configurations }) {
@@ -1432,9 +1558,23 @@ function initializeServoPreview(configurations, configuration = { components: co
         seen.add(parent);
       }
     });
-    servoPreview = { nodes, servoNodes: nodes.filter(node => node.objectType === "Servo"), canvas, yaw: -0.6, pitch: 0.45, zoom: 1, panX: 0, panY: 0, panZ: 0, active: true, frame: 0, selected: null, perspective: false, editing: false, showLabels: false, configuration };
-    Object.assign(servoPreview, loadPreviewCamera());
+    servoPreview = { nodes, servoNodes: nodes.filter(node => node.objectType === "Servo"), canvas, yaw: -0.6, pitch: 0.45, roll: 0, zoom: 1, panX: 0, panY: 0, panZ: 0, active: true, frame: 0, selected: null, perspective: false, editing: false, showLabels: false, showGrid: true, configuration };
+    Object.assign(servoPreview, loadPreviewCamera(configuration));
+    initializeUserCameraViews(configuration);
+    const webcam = configuration.camera?.webcam || {};
+    selectedWebcamDevice = typeof webcam.deviceId === "string" ? webcam.deviceId : "";
+    savedWebcamControls = { ...(webcam.controls || {}) };
+    webcamVideo.style.objectFit = webcam.fit === "contain" ? "contain" : "cover";
+    webcamVideo.style.transform = webcam.mirror === true ? "scaleX(-1)" : "";
     updatePreviewProjectionButton();
+    const gridButton = document.getElementById("previewGrid");
+    gridButton.setAttribute("aria-pressed", String(servoPreview.showGrid));
+    gridButton.addEventListener("click", () => {
+      servoPreview.showGrid = !servoPreview.showGrid;
+      gridButton.setAttribute("aria-pressed", String(servoPreview.showGrid));
+      savePreviewCamera();
+      drawServoPreview();
+    });
     previewReady = true;
     servoPreview.savedNames = configurations.map(component => component.name);
     initializePreviewPlacementControls();
@@ -1444,8 +1584,6 @@ function initializeServoPreview(configurations, configuration = { components: co
     });
     document.getElementById("previewSave").addEventListener("click", savePreviewConfiguration);
     document.getElementById("previewDownload").addEventListener("click", downloadPreviewConfiguration);
-    document.getElementById("previewEdit").textContent = "Open Setup";
-    document.getElementById("previewEdit").addEventListener("click", () => selectTab(3));
     document.getElementById("previewOffline").addEventListener("change", event => setOfflineSimulation(event.target.checked));
     const draw = () => {
       savePreviewCamera();
@@ -1467,7 +1605,7 @@ function initializeServoPreview(configurations, configuration = { components: co
       draw();
     });
     document.getElementById("previewReset").addEventListener("click", () => {
-      Object.assign(servoPreview, { yaw: -0.6, pitch: 0.45, zoom: 1, panX: 0, panY: 0, panZ: 0 }); draw();
+      Object.assign(servoPreview, { yaw: -0.6, pitch: 0.45, roll: 0, zoom: 1, panX: 0, panY: 0, panZ: 0 }); draw();
     });
     document.getElementById("previewCameraViews").addEventListener("click", event => {
       const preset = event.target.closest("button[data-view]")?.dataset.view;
@@ -1519,9 +1657,9 @@ function initializeServoPreview(configurations, configuration = { components: co
       servoPreview.zoom = Math.max(0.2, Math.min(5, servoPreview.zoom)); draw();
     });
     new ResizeObserver(draw).observe(canvas);
+    if (webcam.active === true) startWebcam();
   } catch (error) {
     servoPreview = null; button.disabled = true;
-    document.getElementById("previewEdit").disabled = true;
     document.getElementById("previewSave").disabled = true;
     document.getElementById("previewDownload").disabled = true;
     button.textContent = "3D configuration error: " + error.message;
@@ -1537,6 +1675,17 @@ function previewConfigurationSnapshot() {
     configuration.components[index].position = vector(node.position);
     configuration.components[index].rotation = vector(node.rotation);
   });
+  const { yaw, pitch, roll, zoom, panX, panY, panZ, perspective, showGrid } = servoPreview;
+  configuration.camera = { yaw, pitch, roll: roll || 0, zoom, panX, panY, panZ, perspective, showGrid: showGrid !== false,
+    views: JSON.parse(JSON.stringify(servoPreview.userViews || {})),
+    webcam: {
+      active: Boolean(webcamStream && !webcamVideo.hidden),
+      deviceId: webcamStream?.getVideoTracks()[0]?.getSettings?.().deviceId || selectedWebcamDevice,
+      fit: webcamVideo.style.objectFit === "contain" ? "contain" : "cover",
+      mirror: webcamVideo.style.transform === "scaleX(-1)",
+      controls: { ...savedWebcamControls }
+    }
+  };
   return configuration;
 }
 
@@ -1601,7 +1750,7 @@ async function savePreviewConfiguration() {
       const response = await fetch("/api/config/preview", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ components: placements, originalNames: servoPreview.savedNames })
+        body: JSON.stringify({ components: placements, originalNames: servoPreview.savedNames, camera: configuration.camera })
       });
       const result = await response.text();
       if (!response.ok) throw new Error(result || "HTTP " + response.status);
@@ -1618,6 +1767,149 @@ async function savePreviewConfiguration() {
     controls.forEach(({ control, disabled }) => { control.disabled = disabled; });
     button.disabled = false;
   }
+}
+
+// The viewing camera is a built-in Setup entry, not a servo or attachment.
+function renderSetupCameraControls() {
+  const host = document.getElementById("setupTransforms");
+  host.replaceChildren();
+  const note = makeElement("p", "subtle", "View position shifts the scene centre. Rotation orbits around it. Use Save config to keep the camera and webcam settings.");
+  host.append(note);
+  const numberControl = (group, key, text, step, scale = 1, min, max) => {
+    const label = makeElement("label", "", text);
+    const input = makeElement("input");
+    input.type = "number"; input.step = "any";
+    input.dataset.cameraKey = key; input.dataset.cameraScale = String(scale);
+    if (min !== undefined) input.min = String(min);
+    if (max !== undefined) input.max = String(max);
+    const apply = value => {
+      if (!Number.isFinite(value)) return;
+      value = Math.max(min ?? -Infinity, Math.min(max ?? Infinity, value));
+      servoPreview[key] = value / scale;
+      savePreviewCamera(); drawServoPreview();
+    };
+    input.addEventListener("change", () => {
+      if (input.value !== "" && input.checkValidity()) apply(Number(input.value));
+      syncSetupCameraControls();
+    });
+    const controls = makeElement("div", "camera-adjustment");
+    const minus = makeElement("button", "", "−"), plus = makeElement("button", "", "+");
+    [minus, plus].forEach((button, direction) => {
+      button.type = "button";
+      button.setAttribute("aria-label", text + (direction ? " increase" : " decrease"));
+      button.addEventListener("click", event => {
+        apply(servoPreview[key] * scale + (direction ? 1 : -1) * (event.shiftKey ? step / 5 : step));
+      });
+    });
+    controls.append(minus, input, plus); label.append(controls); group.append(label);
+  };
+  const group = title => {
+    const element = makeElement("fieldset", "camera-control-group");
+    element.append(makeElement("legend", "", title)); host.append(element); return element;
+  };
+  const position = group("View position (mm)");
+  ["panX", "panY", "panZ"].forEach((key, i) => numberControl(position, key, ["X", "Y", "Z"][i], 5));
+  const rotation = group("Rotation (degrees)");
+  numberControl(rotation, "pitch", "Pitch", 5, 180 / Math.PI, -90, 90);
+  numberControl(rotation, "yaw", "Yaw", 5, 180 / Math.PI);
+  numberControl(rotation, "roll", "Roll", 5, 180 / Math.PI);
+  const view = group("View");
+  numberControl(view, "zoom", "Zoom", 0.1, 1, 0.2, 5);
+  const projection = makeElement("button", "", "Toggle perspective"); projection.type = "button"; projection.id = "setupCameraProjection";
+  projection.addEventListener("click", () => document.getElementById("previewProjection").click());
+  const reset = makeElement("button", "", "Reset view"); reset.type = "button";
+  reset.addEventListener("click", () => document.getElementById("previewReset").click());
+  view.append(projection, reset);
+  const webcam = group("Webcam"); webcam.id = "setupWebcamControls";
+  syncSetupCameraControls(); refreshSetupWebcamControls();
+}
+
+function syncSetupCameraControls() {
+  if (!servoPreview || servoPreview.selected !== "camera") return;
+  const projection = document.getElementById("setupCameraProjection");
+  if (projection) {
+    projection.textContent = servoPreview.perspective ? "Perspective" : "Orthographic";
+    projection.setAttribute("aria-pressed", String(servoPreview.perspective));
+  }
+  document.querySelectorAll("[data-camera-key]").forEach(input => {
+    if (document.activeElement !== input) input.value = Number(((servoPreview[input.dataset.cameraKey] || 0) * Number(input.dataset.cameraScale)).toFixed(3));
+  });
+}
+
+async function refreshSetupWebcamControls() {
+  const host = document.getElementById("setupWebcamControls");
+  if (!host) return;
+  host.replaceChildren(makeElement("legend", "", "Webcam"));
+  host.append(webcamToggle);
+  const refresh = makeElement("button", "", "Refresh cameras"); refresh.type = "button";
+  refresh.addEventListener("click", () => refreshSetupWebcamControls()); host.append(refresh);
+  if (!navigator.mediaDevices?.getUserMedia) {
+    host.append(makeElement("p", "subtle", "Webcam access requires a supported browser on HTTPS, localhost, or an allowed secure origin."));
+    return;
+  }
+  const track = webcamStream?.getVideoTracks()[0];
+  const settings = track?.getSettings?.() || {};
+  let capabilities = {};
+  try { capabilities = track?.getCapabilities?.() || {}; }
+  catch (_) { /* Device selection and video display still work without capabilities. */ }
+  const label = makeElement("label", "", "Camera device");
+  const devices = makeElement("select");
+  const defaultOption = makeElement("option", "", "Default camera"); defaultOption.value = ""; devices.append(defaultOption);
+  label.append(devices); host.append(label);
+  devices.value = settings.deviceId || selectedWebcamDevice;
+  devices.disabled = webcamToggle.disabled;
+  devices.addEventListener("change", () => {
+    const deviceId = devices.value;
+    if (deviceId !== selectedWebcamDevice) savedWebcamControls = {};
+    selectedWebcamDevice = deviceId;
+    if (webcamStream) startWebcam(deviceId);
+  });
+  const fitLabel = makeElement("label", "", "Video fit"), fit = makeElement("select");
+  ["cover", "contain"].forEach(value => { const option = makeElement("option", "", value === "cover" ? "Fill view" : "Show entire frame"); option.value = value; fit.append(option); });
+  fit.value = webcamVideo.style.objectFit || "cover";
+  fit.addEventListener("change", () => { webcamVideo.style.objectFit = fit.value; }); fitLabel.append(fit); host.append(fitLabel);
+  const mirrorLabel = makeElement("label", "camera-checkbox", "Mirror video"), mirror = makeElement("input");
+  mirror.type = "checkbox"; mirror.checked = webcamVideo.style.transform === "scaleX(-1)";
+  mirror.addEventListener("change", () => { webcamVideo.style.transform = mirror.checked ? "scaleX(-1)" : ""; });
+  mirrorLabel.append(mirror); host.append(mirrorLabel);
+  if (!track) host.append(makeElement("p", "subtle", "Activate the webcam to reveal device names and supported camera controls."));
+  else {
+    host.append(makeElement("p", "subtle", [track.label, settings.width && settings.height ? settings.width + " × " + settings.height : "", settings.frameRate ? settings.frameRate.toFixed(1) + " fps" : ""].filter(Boolean).join(" · ")));
+    const names = { width: "Width (pixels)", height: "Height (pixels)", frameRate: "Frame rate", zoom: "Optical zoom", pan: "Camera pan", tilt: "Camera tilt", focusMode: "Focus mode", focusDistance: "Focus distance", exposureMode: "Exposure mode", exposureCompensation: "Exposure compensation", exposureTime: "Exposure time", whiteBalanceMode: "White balance", colorTemperature: "Colour temperature", brightness: "Brightness", contrast: "Contrast", saturation: "Saturation", sharpness: "Sharpness", torch: "Light" };
+    Object.entries(names).forEach(([key, text]) => {
+      const capability = capabilities[key];
+      const numeric = capability && Number.isFinite(capability.min) && Number.isFinite(capability.max) && capability.max > capability.min;
+      const choices = Array.isArray(capability) && capability.length > 1;
+      if (!numeric && !choices) return;
+      const field = makeElement("label", "", text);
+      const input = makeElement(choices ? "select" : "input");
+      if (numeric) { input.type = "number"; input.min = capability.min; input.max = capability.max; input.step = capability.step || "any"; }
+      else capability.forEach(value => { const option = makeElement("option", "", String(value)); option.value = String(value); input.append(option); });
+      input.value = settings[key] ?? (numeric ? capability.min : capability[0]);
+      input.addEventListener("change", async () => {
+        if (track !== webcamStream?.getVideoTracks()[0] || (numeric && (!input.value || !input.checkValidity()))) return;
+        const value = numeric ? Number(input.value) : typeof capability[0] === "boolean" ? input.value === "true" : input.value;
+        input.disabled = true;
+        try {
+          const previous = track.getConstraints?.() || {};
+          const constraints = ["width", "height", "frameRate"].includes(key)
+            ? { ...previous, [key]: { exact: value } }
+            : { ...previous, advanced: [{ ...(previous.advanced?.[0] || {}), [key]: value }] };
+          await track.applyConstraints(constraints);
+          savedWebcamControls[key] = value;
+          setText("webcamStatus", text + " updated");
+        } catch (error) { setText("webcamStatus", text + ": " + error.message); }
+        finally { refreshSetupWebcamControls(); }
+      });
+      field.append(input); host.append(field);
+    });
+  }
+  try {
+    const cameras = (await navigator.mediaDevices.enumerateDevices()).filter(device => device.kind === "videoinput");
+    if (!host.isConnected || document.getElementById("setupWebcamControls") !== host || !devices.isConnected) return;
+    cameras.forEach((device, i) => { const option = makeElement("option", "", device.label || "Camera " + (i + 1)); option.value = device.deviceId; devices.append(option); });
+    devices.value = settings.deviceId || selectedWebcamDevice;
+  } catch (error) { setText("webcamStatus", "Could not list webcams: " + error.message); }
 }
 
 function initializePreviewPlacementControls() {
@@ -1660,12 +1952,31 @@ function initializePreviewPlacementControls() {
       list.append(item);
     });
   };
+  const cameraItem = makeElement("li");
+  const cameraButton = makeElement("button", "", "Camera");
+  cameraButton.type = "button";
+  cameraButton.setAttribute("aria-pressed", String(servoPreview.selected === "camera"));
+  cameraButton.addEventListener("click", () => {
+    servoPreview.selected = "camera";
+    initializePreviewPlacementControls();
+    drawServoPreview();
+  });
+  cameraItem.append(cameraButton);
+  selection.append(cameraItem);
   appendChildren(null, selection);
   document.getElementById("previewAddComponent").disabled = servoPreview.nodes.length >= 60;
   updatePreviewAddButton();
   const selectedNode = servoPreview.nodes[servoPreview.selected];
   const heading = document.getElementById("setupSelectedName");
   heading.contentEditable = selectedNode ? "plaintext-only" : "false";
+  if (servoPreview.selected === "camera") {
+    heading.contentEditable = "false";
+    setText("setupSelectedName", "Camera");
+    document.getElementById("previewRemove").disabled = true;
+    renderSetupCameraControls();
+    updatePreviewTransform();
+    return;
+  }
   if (!selectedNode) {
     document.getElementById("previewRemove").disabled = true;
     setText("setupSelectedName", "Select a component");
@@ -1937,11 +2248,12 @@ function clampPreviewPitch(pitch) {
   return Math.max(-Math.PI / 2, Math.min(Math.PI / 2, pitch));
 }
 
-function previewCameraPoint(point, yaw, pitch) {
+function previewCameraPoint(point, yaw, pitch, roll = 0) {
   const degrees = 180 / Math.PI;
   // World Y orbit first, then camera elevation: yaw must not tilt the floor.
   const orbit = rotateServoPoint(point, [0, yaw * degrees, 0]);
-  return rotateServoPoint(orbit, [clampPreviewPitch(pitch) * degrees, 0, 0]);
+  const elevated = rotateServoPoint(orbit, [clampPreviewPitch(pitch) * degrees, 0, 0]);
+  return roll ? rotateServoPoint(elevated, [0, 0, roll * degrees]) : elevated;
 }
 
 function panPreviewFloor(dx, dy) {
@@ -2019,6 +2331,8 @@ function drawSelectedPreviewAxes(ctx, nodes, index, project, muted = false) {
 
 function drawServoPreview() {
   if (!servoPreview || !servoPreview.active) return;
+  syncSetupCameraControls();
+  updateUserCameraButtons();
   const { canvas, nodes, yaw, pitch, zoom } = servoPreview;
   const width = canvas.clientWidth, height = canvas.clientHeight;
   if (!width || !height) return;
@@ -2026,11 +2340,15 @@ function drawServoPreview() {
   canvas.width = Math.round(width * ratio); canvas.height = Math.round(height * ratio);
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
-  ctx.scale(ratio, ratio); ctx.fillStyle = "#0d1822"; ctx.fillRect(0, 0, width, height);
+  ctx.scale(ratio, ratio);
+  if (!webcamStream || webcamVideo.hidden) {
+    ctx.fillStyle = "#0d1822";
+    ctx.fillRect(0, 0, width, height);
+  }
   // User-controlled floor target and fixed span; servo motion never reframes the camera.
   const center = [servoPreview.panX, servoPreview.panY, servoPreview.panZ];
   const scale = Math.min(width, height) / 400 * zoom;
-  const cameraPoint = point => previewCameraPoint(point.map((v, axis) => v - center[axis]), yaw, pitch);
+  const cameraPoint = point => previewCameraPoint(point.map((v, axis) => v - center[axis]), yaw, pitch, servoPreview.roll);
   const projectCamera = point => projectPreviewPoint(point, width, height, scale, servoPreview.perspective);
   const project = point => {
     const camera = cameraPoint(point);
@@ -2065,19 +2383,21 @@ function drawServoPreview() {
   const gridPoint = (across, up) => sideGrid
     ? (Math.abs(Math.cos(yaw)) > 0.5 ? [across, up, 0] : [0, up, across])
     : [across, floorY, up];
-  for (let offset = -gridExtent; offset <= gridExtent; offset += gridStep) {
-    if (offset === 0) continue;
-    const major = offset % gridMajorStep === 0;
-    const color = major ? "#344959" : "#223340";
-    gridLine(gridPoint(offset, -gridExtent), gridPoint(offset, gridExtent), color, major ? 1 : 0.5);
-    gridLine(gridPoint(-gridExtent, offset), gridPoint(gridExtent, offset), color, major ? 1 : 0.5);
+  if (servoPreview.showGrid !== false) {
+    for (let offset = -gridExtent; offset <= gridExtent; offset += gridStep) {
+      if (offset === 0) continue;
+      const major = offset % gridMajorStep === 0;
+      const color = major ? "#344959" : "#223340";
+      gridLine(gridPoint(offset, -gridExtent), gridPoint(offset, gridExtent), color, major ? 1 : 0.5);
+      gridLine(gridPoint(-gridExtent, offset), gridPoint(gridExtent, offset), color, major ? 1 : 0.5);
+    }
+    gridLine([-gridExtent, floorY, 0], [0, floorY, 0], "#af625d", 1.5);
+    gridLine([0, floorY, 0], [gridExtent, floorY, 0], "#d9443c", 2.5);
+    gridLine([0, floorY, -gridExtent], [0, floorY, 0], "#5d83af", 1.5);
+    gridLine([0, floorY, 0], [0, floorY, gridExtent], "#3979df", 2.5);
+    gridLine([0, -gridExtent, 0], [0, 0, 0], "#79df9b", 1.5);
+    gridLine([0, 0, 0], [0, gridExtent, 0], "#42e76a", 2.5);
   }
-  gridLine([-gridExtent, floorY, 0], [0, floorY, 0], "#af625d", 1.5);
-  gridLine([0, floorY, 0], [gridExtent, floorY, 0], "#d9443c", 2.5);
-  gridLine([0, floorY, -gridExtent], [0, floorY, 0], "#5d83af", 1.5);
-  gridLine([0, floorY, 0], [0, floorY, gridExtent], "#3979df", 2.5);
-  gridLine([0, -gridExtent, 0], [0, 0, 0], "#79df9b", 1.5);
-  gridLine([0, 0, 0], [0, gridExtent, 0], "#42e76a", 2.5);
   ctx.lineWidth = 1;
   const faces = [], labels = [];
   function box(index, offset, dimensions, color, shaft) {
@@ -2285,7 +2605,7 @@ document.getElementById("servoSettingsForm").addEventListener("submit", async ev
       setText("servoSettingsStatus", "Edited config downloaded. Replace data/config.json with this file; the controller was not changed.");
     } else {
       const response = await fetch("/api/config/servo", { method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ originalName: editedServoName, servo }) });
+        body: JSON.stringify({ originalName: editedServoName, servo, camera: config.camera }) });
       const result = await response.text();
       if (!response.ok) throw new Error(result || "HTTP " + response.status);
       setText("servoSettingsStatus", "Saved. Restart the controller and reload this page to apply the new settings.");
