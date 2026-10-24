@@ -4,7 +4,7 @@
   let loading;
   async function load() {
     if (!loading) loading = (async () => {
-      const module = await import('https://cdn.skypack.dev/@dimforge/rapier3d-compat');
+      const module = await import('./lib/rapier.js');
       const RAPIER = module.default || module;
       await RAPIER.init();
       return RAPIER;

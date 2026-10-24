@@ -1,14 +1,24 @@
 #include "WebStatusServer.h"
 
 #include "AppLog.h"
+#include "BoardRgbLed.h"
+
+extern BoardRgbLed boardRgbLed;
 #include "ServoPositionStore.h"
 
 #include <ArduinoJson.h>
-#include <ESP8266WiFi.h>
+#include "DevicePlatform.h"
 #include <LittleFS.h>
 #include <math.h>
 
 namespace {
+bool validRgb(JsonVariantConst value) {
+  if (!value.is<JsonArrayConst>() || value.size() != 3) return false;
+  for (JsonVariantConst channel : value.as<JsonArrayConst>()) {
+    if (!channel.is<int>() || channel.as<int>() < 0 || channel.as<int>() > 255) return false;
+  }
+  return true;
+}
 constexpr uint8_t kMaximumSequenceSteps = 32;
 constexpr uint32_t kMinimumStepDurationMilliseconds = 100;
 constexpr uint32_t kMaximumStepDurationMilliseconds = 60000;
@@ -133,6 +143,12 @@ void WebStatusServer::begin(Pca9685ServoTest* servos,
   server_.on("/app.js", HTTP_GET, [this]() {
     sendAsset("/app.js", "application/javascript; charset=utf-8");
   });
+  server_.on("/physics.js", HTTP_GET, [this]() {
+    sendAsset("/physics.js", "application/javascript; charset=utf-8");
+  });
+  server_.on("/lib/rapier.js", HTTP_GET, [this]() {
+    sendAsset("/lib/rapier.js", "application/javascript; charset=utf-8");
+  });
   server_.on("/3dmodels/TD-7120.js", HTTP_GET, [this]() {
     sendAsset("/3dmodels/TD-7120.js", "application/javascript; charset=utf-8");
   });
@@ -180,6 +196,15 @@ void WebStatusServer::begin(Pca9685ServoTest* servos,
     server_.on(route.c_str(), HTTP_GET, [this]() { sendSequence(); });
     server_.on(route.c_str(), HTTP_POST, [this]() { saveSequence(); });
   }
+  server_.on("/api/led", HTTP_POST, [this]() {
+    JsonDocument document;
+    if (server_.arg("plain").length() > 128 || deserializeJson(document, server_.arg("plain")) || !validRgb(document["rgb"])) {
+      server_.send(400, "text/plain", "Expected rgb: three integers from 0 to 255");
+      return;
+    }
+    boardRgbLed.setColor(document["rgb"][0], document["rgb"][1], document["rgb"][2]);
+    server_.send(200, "text/plain", "LED color updated");
+  });
   server_.on("/api/servo", HTTP_POST, [this]() {
     setServoAngle();
   });
@@ -318,6 +343,14 @@ void WebStatusServer::sendSequence() {
 
   const JsonArrayConst steps = document["steps"].as<JsonArrayConst>();
   for (JsonObjectConst step : steps) {
+    if (step["type"] == "color") {
+      if (!validRgb(step["rgb"]) || !step["durationMs"].is<uint32_t>() ||
+          step["durationMs"].as<uint32_t>() < 100 || step["durationMs"].as<uint32_t>() > 60000) {
+        server_.send(400, "text/plain", "Invalid RGB color step");
+        return;
+      }
+      continue;
+    }
     if (step["type"].is<const char*>() && String(step["type"].as<const char*>()) == "sequence") {
       const String target = step["slot"].is<const char*>() ? String(step["slot"].as<const char*>()) : String();
       if (target.length() != 1 || target[0] < 'a' || target[0] > 'j') {
@@ -411,6 +444,14 @@ void WebStatusServer::saveSequence() {
   }
 
   for (JsonObjectConst step : steps) {
+    if (step["type"] == "color") {
+      if (!validRgb(step["rgb"]) || !step["durationMs"].is<uint32_t>() ||
+          step["durationMs"].as<uint32_t>() < 100 || step["durationMs"].as<uint32_t>() > 60000) {
+        server_.send(400, "text/plain", "Invalid RGB color step");
+        return;
+      }
+      continue;
+    }
     if (step["type"].is<const char*>() && String(step["type"].as<const char*>()) == "sequence") {
       const String target = step["slot"].is<const char*>() ? String(step["slot"].as<const char*>()) : String();
       if (target.length() != 1 || target[0] < 'a' || target[0] > 'j') {
@@ -945,13 +986,13 @@ void WebStatusServer::sendStatus() {
   const String ip = ipAddress.toString();
   const String mac = WiFi.macAddress();
   const String sdkVersion = ESP.getSdkVersion();
-  const String coreVersion = ESP.getCoreVersion();
-  const String resetReason = ESP.getResetReason();
+  const String coreVersion = DevicePlatform::coreVersion();
+  const String resetReason = DevicePlatform::resetReason();
 
   String json;
   json.reserve(1800);
   json += F("{\"device\":{\"chipId\":\"0x");
-  json += String(ESP.getChipId(), HEX);
+  json += String(DevicePlatform::chipId(), HEX);
   json += F("\",\"cpuMHz\":");
   json += String(ESP.getCpuFreqMHz());
   json += F(",\"sdk\":");
@@ -965,9 +1006,9 @@ void WebStatusServer::sendStatus() {
   json += F(",\"freeHeap\":");
   json += String(ESP.getFreeHeap());
   json += F(",\"largestFreeBlock\":");
-  json += String(ESP.getMaxFreeBlockSize());
+  json += String(DevicePlatform::largestFreeBlock());
   json += F(",\"heapFragmentation\":");
-  json += String(ESP.getHeapFragmentation());
+  json += String(DevicePlatform::heapFragmentation());
   json += F(",\"flashSize\":");
   json += String(ESP.getFlashChipSize());
   json += F(",\"sketchSize\":");

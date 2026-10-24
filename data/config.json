@@ -64,7 +64,7 @@
       "parent": null,
       "position": {
         "x": 0,
-        "y": 195,
+        "y": 175,
         "z": 0
       },
       "rotation": {
@@ -76,7 +76,12 @@
         "y": {
           "enabled": true,
           "min": 0,
-          "max": 10
+          "max": 60
+        },
+        "x": {
+          "enabled": true,
+          "min": 0,
+          "max": 0
         }
       }
     },
@@ -139,14 +144,14 @@
       "parent": "U Bracket Short 2",
       "enabled": true,
       "initialMotionMode": "immediate",
-      "startupAngle": 90,
+      "startupAngle": 120,
       "address": "0x41",
       "channel": 1,
       "minPulseMicroseconds": 500,
       "maxPulseMicroseconds": 2500,
       "type": "TD-7120",
       "minAngle": 0,
-      "maxAngle": 180,
+      "maxAngle": 270,
       "reversed": false,
       "objectType": "Servo",
       "continuous": false
@@ -370,13 +375,13 @@
     }
   ],
   "camera": {
-    "yaw": 2.2823336203866678,
-    "pitch": 0.28148101806640624,
+    "yaw": 1.1958699329707347,
+    "pitch": 0.20000000000000018,
     "roll": 0,
     "zoom": 1.1655633209342564,
-    "panX": -4.299665020223282,
-    "panY": 113.43800738959422,
-    "panZ": 101.79412252066243,
+    "panX": 69.39875348132232,
+    "panY": 94.02797849387744,
+    "panZ": -7.707292993143508,
     "perspective": true,
     "showGrid": false,
     "views": {
@@ -402,7 +407,7 @@
       }
     },
     "webcam": {
-      "active": true,
+      "active": false,
       "deviceId": "c8d78d74d13f84b7ded8713da9ca1fa10358354daa2672cfcab44e699dfc2857",
       "fit": "cover",
       "mirror": false,

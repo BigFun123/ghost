@@ -2,8 +2,8 @@
 
 ## Project layout
 
-- This is an ESP8266 Arduino project built with PlatformIO for `nodemcuv2`.
-- The model is: ESP8266 ESP-12F TYPE-C with built in 2.44cm OLED
+- This Arduino project defaults to PlatformIO `esp32-s3-devkitc-1`, configured for N16R8 (16 MB flash, 8 MB octal PSRAM); the original ESP8266 `nodemcuv2` target remains supported.
+- ESP32-S3 uses `partitions_esp32s3_16mb.csv` for two OTA slots and LittleFS. Confirm flash capacity before changing partitions.
 - Firmware lives in `src/`, with headers in `include/`.
 - The controller frontend lives in `data/index.html`, `data/app.js`, and `data/style.css`. LittleFS serves these assets and `data/config.json`.
 - `src/WebStatusServer.cpp` implements the frontend API. Check its request and response formats before changing frontend commands.
@@ -22,8 +22,8 @@
 ## Validation
 
 - For frontend JavaScript changes, run `node --check data/app.js`.
-- For firmware changes, run `pio run -e nodemcuv2` using the available PlatformIO executable.
-- When validating filesystem packaging, use `pio run -e nodemcuv2 -t buildfs`.
+- For firmware changes, run `pio run -e esp32-s3-devkitc-1` and `pio run -e nodemcuv2` using the available PlatformIO executable.
+- When validating filesystem packaging, use `pio run -e esp32-s3-devkitc-1 -t buildfs` (or the corresponding ESP8266 target).
 - Run `git diff --check` and distinguish issues introduced by the current change from pre-existing issues.
 - Use targeted behavior checks when changes affect servo commands or playback. Report when hardware behavior has not been tested.
 
@@ -32,4 +32,4 @@
 - Local edits and builds do not update the physical controller. State clearly whether changes have been uploaded.
 - Upload only when the user requests or has authorized deployment to the device.
 - Frontend assets require a filesystem upload; firmware requires a firmware upload.
-- `nodemcuv2_ota` targets `ghost-controller.local`. `upload_html.ps1` performs an OTA filesystem upload using a machine-specific PlatformIO path; inspect it before use.
+- Both OTA environments target `ghost-controller.local`. `upload_html.ps1` defaults to `esp32-s3-devkitc-1_ota` and accepts `-Environment nodemcuv2_ota` for the old board. It uses a machine-specific PlatformIO path; inspect it before use.

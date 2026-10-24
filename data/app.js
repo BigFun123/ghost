@@ -134,13 +134,18 @@ let sequenceSaving = false;
 let sequenceApplying = false;
 let sequenceLoaded = false;
 let sequenceLoading = false;
+let sequenceSavePromise = null;
 let selectedSequenceSlot = "a";
 const simulationSequences = new Map();
 const sequenceSlotButtons = Array.from(document.querySelectorAll("#sequenceSlots button"));
 const sequenceFilename = () => "sequence_" + selectedSequenceSlot + ".json";
 const sequenceEndpoint = () => "/api/sequence/" + selectedSequenceSlot;
 sequenceSlotButtons.forEach(button => button.addEventListener("click", async () => {
-  if (sequenceLoading || sequenceSaving || sequencePlaying || sequenceApplying || controllerRebooting || sweepRunning) return;
+  if (sequenceLoading || sequencePlaying || sequenceApplying || controllerRebooting || sweepRunning) return;
+  while (sequenceSaving) {
+    if (!sequenceSavePromise || !await sequenceSavePromise) return;
+  }
+  if (sequenceLoading || sequencePlaying || sequenceApplying || controllerRebooting || sweepRunning) return;
   if (button.dataset.slot === selectedSequenceSlot && sequenceLoaded) return;
   const previousSlot = selectedSequenceSlot;
   const previousSequence = sequence;
@@ -336,22 +341,23 @@ function updateSequencerControls() {
     : "UPDATE STEP";
   writeStepButton.disabled = locked || !allServosReady ||
     (selectedSequenceStepIndex < 0 && sequence.steps.length >= 32);
-  playSequenceButton.disabled = locked || sweepRunning ||
-    !allServosReady || sequence.steps.length === 0;
+  playSequenceButton.disabled = locked || sweepRunning || sequence.steps.length === 0;
   stopSequenceButton.disabled = !sequencePlaying;
   clearSequenceButton.disabled = locked || sequence.steps.length === 0;
   sequenceSlotButtons.forEach(button => {
-    button.disabled = locked || sweepRunning;
+    // A slot click waits for the current save, including a duration input blur.
+    button.disabled = controllerRebooting || sequencePlaying || sequenceLoading || sequenceApplying || !sequenceLoaded || sweepRunning;
     button.setAttribute("aria-pressed", String(button.dataset.slot === (playbackSequenceView?.slot || selectedSequenceSlot)));
   });
   document.getElementById("appendSequenceStep").disabled = locked || !allServosReady || sequence.steps.length >= 32;
   document.getElementById("appendSequenceCall").disabled = locked || sequence.steps.length >= 32;
+  document.getElementById("appendSequenceColor").disabled = locked || sequence.steps.length >= 32;
   stepDurationInput.disabled = locked;
   sequenceLoopInput.disabled = locked;
   sequenceFinishInput.disabled = locked;
   playbackRateInput.disabled = locked;
   sequencerSteps.querySelectorAll("input, select, button").forEach(element => {
-    if (element.id === "appendSequenceStep" || element.id === "appendSequenceCall") return;
+    if (element.id === "appendSequenceStep" || element.id === "appendSequenceCall" || element.id === "appendSequenceColor") return;
     element.disabled = locked || element.dataset.sequenceCall === "true" || (element.classList.contains("move-step-up-button") && element.dataset.stepIndex === "0");
   });
 }
@@ -435,6 +441,24 @@ function renderSequence() {
       select.disabled = true;
       select.dataset.sequenceCall = "true";
       select.title = "Sequence call — choose its target from the dropdown";
+    } else if (step.type === "color") {
+      const colors = makeElement("div", "sequence-color-controls");
+      ["R", "G", "B"].forEach((label, channel) => {
+        const button = makeElement("button", "mix-button sequence-color-channel", label);
+        button.type = "button";
+        button.dataset.channel = label.toLowerCase();
+        button.setAttribute("aria-pressed", String(step.rgb[channel] > 0));
+        button.setAttribute("aria-label", "Step " + (index + 1) + " " + ["red", "green", "blue"][channel]);
+        button.addEventListener("click", () => {
+          const rgb = [...step.rgb];
+          rgb[channel] = rgb[channel] > 0 ? 0 : 255;
+          saveSequenceChange({ ...sequence, steps: sequence.steps.map((saved, i) => i === index ? { ...saved, rgb } : saved) });
+        });
+        colors.append(button);
+      });
+      row.append(colors);
+      select.dataset.sequenceCall = "true";
+      select.title = "LED color step";
     } else {
       row.append(duration);
     }
@@ -497,12 +521,23 @@ function captureSequenceStep(durationMs) {
 }
 
 async function applySequenceStep(step, useStartupMotion = false, playbackRate = 1) {
+  if (step.type === "color") {
+    if (!offlineSimulation) {
+      const response = await fetch("/api/led", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rgb: step.rgb }), signal: AbortSignal.timeout(3000)
+      });
+      if (!response.ok) throw new Error(await response.text() || "Could not set LED color");
+    }
+    return;
+  }
   step.servoStates.forEach((state, servoIndex) => {
-    applyServoState(servoControls[servoIndex], state);
+    if (servoControls[servoIndex]?.ready) applyServoState(servoControls[servoIndex], state);
   });
   const hasSolo = servoControls.some(control => control.solo);
   await Promise.all(step.angles.map(async (angle, servoIndex) => {
     const control = servoControls[servoIndex];
+    if (!control?.ready) return;
     const enabled = !control.muted && (!hasSolo || control.solo);
     await requestServo(control, {
       angle: String(angle),
@@ -517,7 +552,7 @@ async function applySequenceStep(step, useStartupMotion = false, playbackRate = 
 }
 
 async function selectSequenceStep(index) {
-  if (sequence.steps[index]?.type === "sequence") return;
+  if (["sequence", "color"].includes(sequence.steps[index]?.type)) return;
   if (sequencePlaying || sequenceSaving || sequenceApplying) return;
   if (selectedSequenceStepIndex === index) {
     selectedSequenceStepIndex = -1;
@@ -572,37 +607,58 @@ function applyServoState(control, encodedState) {
 }
 
 async function saveSequenceChange(updated, previousSelection = selectedSequenceStepIndex) {
-  if (sequencePlaying || sequenceSaving || sequenceLoading) return;
+  if (sequencePlaying || sequenceLoading) return false;
   const previous = sequence;
+  const slot = selectedSequenceSlot;
+  const pending = sequenceSavePromise;
   sequence = updated;
-  renderSequence();
   sequenceSaving = true;
+  // Snapshot the payload and slot before waiting for any earlier write.
+  const body = JSON.stringify(updated);
+  const saving = Promise.resolve().then(async () => {
+    if (pending) await pending;
+    try {
+      if (!offlineSimulation || localConfigServer) {
+        const response = await fetch("/api/sequence/" + slot, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body
+        });
+        const result = await response.text();
+        if (!response.ok) throw new Error(result || "HTTP " + response.status);
+      }
+      simulationSequences.set(slot, updated);
+      if (sequenceSavePromise === saving) {
+        setText("sequencerError", "");
+        setText("sequencerStatus", updated.steps.length + " step(s) " +
+          (offlineSimulation && !localConfigServer ? "kept in this page" :
+            "saved to " + (localConfigServer ? "data/" : "") + "sequence_" + slot + ".json"));
+      }
+      return true;
+    } catch (error) {
+      // An older failed request must not roll back a newer accepted edit.
+      if (selectedSequenceSlot === slot && sequence === updated) {
+        sequence = previous;
+        selectedSequenceStepIndex = previousSelection;
+        renderSequence();
+      }
+      setText("sequencerStatus", "Sequence was not saved");
+      setText("sequencerError", error.message);
+      return false;
+    } finally {
+      if (sequenceSavePromise === saving) {
+        sequenceSaving = false;
+        sequenceSavePromise = null;
+        updateSequencerControls();
+      }
+    }
+  });
+  sequenceSavePromise = saving;
+  renderSequence();
   updateSequencerControls();
   setText("sequencerError", "");
-  setText("sequencerStatus", "Saving sequence…");
-  try {
-    if (offlineSimulation && !localConfigServer) {
-      setText("sequencerStatus", sequence.steps.length + " simulation step(s), kept in this page");
-      return;
-    }
-    const response = await fetch(sequenceEndpoint(), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(sequence)
-    });
-    const result = await response.text();
-    if (!response.ok) throw new Error(result || "HTTP " + response.status);
-    setText("sequencerStatus", sequence.steps.length + " step(s) saved to " + (localConfigServer ? "data/" : "") + sequenceFilename());
-  } catch (error) {
-    sequence = previous;
-    selectedSequenceStepIndex = previousSelection;
-    renderSequence();
-    setText("sequencerStatus", "Sequence was not saved");
-    setText("sequencerError", error.message);
-  } finally {
-    sequenceSaving = false;
-    updateSequencerControls();
-  }
+  setText("sequencerStatus", "Saving sequence�");
+  return saving;
 }
 
 async function readSequence(slot) {
@@ -617,7 +673,9 @@ async function readSequence(slot) {
   const saved = await response.json();
   if (typeof saved.loop !== "boolean" || (saved.finish !== undefined && typeof saved.finish !== "boolean") || !Array.isArray(saved.steps) ||
     saved.steps.length > 32 ||
-    saved.steps.some(step => step?.type === "sequence" ? !/^[a-j]$/.test(step.slot) :
+    saved.steps.some(step => step?.type === "color" ?
+      !Array.isArray(step.rgb) || step.rgb.length !== 3 || step.rgb.some(value => !Number.isInteger(value) || value < 0 || value > 255) ||
+      !Number.isInteger(step.durationMs) || step.durationMs < 100 || step.durationMs > 60000 : step?.type === "sequence" ? !/^[a-j]$/.test(step.slot) :
       !step || !Array.isArray(step.angles) || step.angles.length !== servoControls.length ||
       (step.servoStates !== undefined &&
         (!Array.isArray(step.servoStates) ||
@@ -632,7 +690,7 @@ async function readSequence(slot) {
   return {
     ...saved,
     finish: saved.finish === true,
-    steps: saved.steps.map(step => step.type === "sequence" ? step : ({
+    steps: saved.steps.map(step => ["sequence", "color"].includes(step.type) ? step : ({
       ...step,
       servoStates: step.servoStates || servoControls.map(encodeServoState)
     }))
@@ -694,7 +752,7 @@ function sequenceStepWaitMilliseconds(step, playbackRate, motionEnds, finish = s
   if (!finish) return step.durationMs / playbackRate;
   const remaining = Math.max(0, ...motionEnds.map(end => end - performance.now()));
   // Continuous servos have no destination, so their run time still comes from the step.
-  const continuousDuration = servoControls.some(control => isEligible(control) && control.continuous)
+  const continuousDuration = servoControls.some(control => control.ready && isEligible(control) && control.continuous)
     ? step.durationMs / playbackRate : 0;
   // Yield even for immediate moves so a looping sequence remains stoppable.
   return Math.max(16, remaining, continuousDuration);
@@ -705,10 +763,6 @@ async function playSequence() {
   const playbackRate = Number(playbackRateInput.value);
   if (!Number.isFinite(playbackRate) || playbackRate < 0.001 || playbackRate > 10) {
     setText("sequencerError", "Playback rate must be between 0.001 and 10.");
-    return;
-  }
-  if (!servoControls.every(control => control.ready)) {
-    setText("sequencerError", "All configured servos must be available to play the sequence.");
     return;
   }
 
@@ -760,11 +814,11 @@ async function playSequence() {
       if (entry) setText("sequencerStatus", "Playing " + entry.slot.toUpperCase() + " step " + (entry.index + 1));
       // The initial smooth move is step 1, not a separate pre-roll and hold.
       await applySequenceStep(step, startup, playbackRate);
-      startup = false;
+      if (step.type !== "color") startup = false;
       if (runId !== sequenceRunId) break;
       const deadline = performance.now() + step.durationMs / playbackRate;
-      const motionEnds = activeStepMotionEnds();
-      await waitForStep(runId, sequenceStepWaitMilliseconds(step, playbackRate, motionEnds, finish));
+      const motionEnds = step.type === "color" ? [] : activeStepMotionEnds();
+      await waitForStep(runId, sequenceStepWaitMilliseconds(step, playbackRate, motionEnds, step.type === "color" ? false : finish));
       if (runId !== sequenceRunId) break;
       if (!finish && motionEnds.some(end => end > deadline + 1)) {
         overdueSequenceSteps.add(step);
@@ -827,6 +881,10 @@ document.getElementById("appendSequenceCall").addEventListener("click", () => {
   if (sequencePlaying || sequenceSaving || sequenceLoading || sequenceApplying || controllerRebooting || !sequenceLoaded || sequence.steps.length >= 32) return;
   saveSequenceChange({ ...sequence, steps: [...sequence.steps, { type: "sequence", slot: "a" }] });
 });
+document.getElementById("appendSequenceColor").addEventListener("click", () => {
+  if (sequencePlaying || sequenceSaving || sequenceLoading || sequenceApplying || controllerRebooting || !sequenceLoaded || sequence.steps.length >= 32) return;
+  saveSequenceChange({ ...sequence, steps: [...sequence.steps, { type: "color", rgb: [0, 0, 255], durationMs: 100 }] });
+});
 writeStepButton.addEventListener("click", writeSequenceStep);
 playSequenceButton.addEventListener("click", playSequence);
 stopSequenceButton.addEventListener("click", stopSequence);
@@ -872,7 +930,7 @@ function trackCommandedMotion(control, request, at) {
 }
 
 function activeStepMotionEnds() {
-  return servoControls.filter(control => isEligible(control) && !control.continuous).map(control => {
+  return servoControls.filter(control => control.ready && isEligible(control) && !control.continuous).map(control => {
     const motion = offlineSimulation
       ? servoPreview?.servoNodes[control.channel - 1].motion : control.commandedMotion;
     return motion ? motion.at + motion.duration : 0;
@@ -1107,7 +1165,7 @@ sweepButton.addEventListener("click", () => runMacro(async runId => {
 sweepAllButton.addEventListener("click", () => runMacro(async runId => {
   for (const angle of sweepAngles()) {
     if (runId !== sweepRunId) return;
-    const eligible = servoControls.filter(control => isEligible(control) && !control.continuous);
+    const eligible = servoControls.filter(control => control.ready && isEligible(control) && !control.continuous);
     if (eligible.length === 0) return;
     setText("macroStatus", "Sweeping all active servos");
     await Promise.all(eligible.map(control => sendAngle(control, angle)));

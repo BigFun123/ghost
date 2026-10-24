@@ -5,12 +5,12 @@ const source = fs.readFileSync(require('node:path').join(__dirname, '../data/app
 const playback = source.slice(source.indexOf('function sequenceStepWaitMilliseconds('), source.indexOf('function stopSequence('));
 const motion = name => ({ name, durationMs: 100 });
 const call = slot => ({ type: 'sequence', slot });
-async function run(root, slots, stopOnRead = false) {
+async function run(root, slots, stopOnRead = false, servoReady = true) {
   const moves = [], messages = [], views = [];
   const context = {
     controllerRebooting: false, sequencePlaying: false, sweepRunning: false,
     sequence: root, selectedSequenceSlot: 'a', playbackRateInput: { value: '1' },
-    servoControls: [{ ready: true }], sequenceLiveOverrides: new Map(), sequenceRunId: 0,
+    servoControls: [{ ready: servoReady }], sequenceLiveOverrides: new Map(), sequenceRunId: 0,
     sweepButton: {}, sweepAllButton: {}, centerButton: {}, stopSweepButton: {},
     performance: { now: () => 0 }, setText(id, text) { messages.push(text); },
     setServoPlaybackLock() {}, updateSequencerControls() {}, renderSequence() {
@@ -42,6 +42,15 @@ async function run(root, slots, stopOnRead = false) {
     { slot: 'a', index: 2, name: 'A2' }
   ]);
   assert.equal(result.context.playbackSequenceView, null);
+  const color = { type: 'color', rgb: [255, 0, 255], durationMs: 100, name: 'LED' };
+  const colored = await run({ loop: false, steps: [motion('A1'), call('b'), motion('A2')] }, {
+    b: { loop: false, steps: [color, motion('B1')] }
+  });
+  assert.deepEqual(colored.moves, ['A1', 'LED', 'B1', 'A2']);
+  const unavailable = await run({ loop: false, steps: [motion('skip unavailable'), call('b')] }, {
+    b: { loop: false, steps: [color] }
+  }, false, false);
+  assert.deepEqual(unavailable.moves, ['skip unavailable', 'LED'], 'missing servo controller must not block mixed or nested LED playback');
   const circular = await run(root, { b: { steps: [call('a')] } });
   assert.deepEqual(circular.moves, []);
   assert(circular.messages.some(text => text.includes('Circular')));

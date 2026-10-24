@@ -1,6 +1,6 @@
 #pragma once
 
-#include <ESP8266WebServer.h>
+#include "DevicePlatform.h"
 
 #include "Pca9685ServoTest.h"
 #include "ServoConfiguration.h"
@@ -25,7 +25,7 @@ class WebStatusServer {
   void saveServoPositionsIfDue();
   void setServoAngle();
 
-  ESP8266WebServer server_{80};
+  ControllerWebServer server_{80};
   Pca9685ServoTest* servos_ = nullptr;
   const ServoConfiguration* configurations_ = nullptr;
   uint8_t servoCount_ = 0;

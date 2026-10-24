@@ -771,7 +771,7 @@ body { padding-bottom: calc(36px + env(safe-area-inset-bottom, 0px)); }
 .sequence-slots button { min-width: 0; padding: 4px 0; border: 1px solid #537183; border-radius: 3px; background: #263746; color: #e8edf2; font: inherit; font-size: 11px; cursor: pointer; }
 .sequence-slots button[aria-pressed="true"] { background: #205547; border-color: #5ce0b0; color: #fff; }
 
-.sequence-add-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 6px; }
+.sequence-add-actions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 6px; }
 .sequence-step-target { min-width: 0; width: 90px; background: #11181e; color: #e8edf2; border: 1px solid #5a6872; border-radius: 4px; padding: 6px; font: inherit; }
 
 #sequencerPanel[hidden] { display: none; }
@@ -817,3 +817,9 @@ body { padding-bottom: calc(36px + env(safe-area-inset-bottom, 0px)); }
 .null-rotation-constraints { display: flex; flex-wrap: wrap; gap: 12px; border-top: 1px solid #537183; margin-top: 8px; padding-top: 8px; }
 .null-rotation-constraints p { flex-basis: 100%; margin: 0; }
 .null-rotation-constraints label { display: flex; flex-direction: row-reverse; align-items: center; gap: 5px; }
+
+.sequence-color-controls { display: flex; gap: 4px; flex: 1; }
+.sequence-color-channel { min-width: 0; flex: 1; padding: 4px; }
+.sequence-color-channel[data-channel="r"][aria-pressed="true"] { background: #a32b37; color: white; }
+.sequence-color-channel[data-channel="g"][aria-pressed="true"] { background: #237c43; color: white; }
+.sequence-color-channel[data-channel="b"][aria-pressed="true"] { background: #285aa8; color: white; }

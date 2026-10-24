@@ -58,6 +58,11 @@ function validateConfiguration(config) {
 function validateSequence(sequence, servoCount) {
   if (!sequence || typeof sequence.loop !== 'boolean' || (sequence.finish !== undefined && typeof sequence.finish !== 'boolean') || !Array.isArray(sequence.steps) || sequence.steps.length > 32) throw new Error('Expected a loop flag and at most 32 steps.');
   for (const step of sequence.steps) {
+    if (step?.type === 'color') {
+      if (!Array.isArray(step.rgb) || step.rgb.length !== 3 || step.rgb.some(value => !Number.isInteger(value) || value < 0 || value > 255) ||
+          !Number.isInteger(step.durationMs) || step.durationMs < 100 || step.durationMs > 60000) throw new Error('Invalid RGB color step.');
+      continue;
+    }
     if (step?.type === 'sequence') {
       if (!/^[a-j]$/.test(step.slot)) throw new Error('Sequence call target must be a-j.');
       continue;

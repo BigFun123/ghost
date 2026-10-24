@@ -2,13 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import '../data/physics.js';
-const entryUrl = 'https://cdn.skypack.dev/@dimforge/rapier3d-compat';
-const entry = await (await fetch(entryUrl, { signal: AbortSignal.timeout(20000) })).text();
-const route = entry.match(/export \{default\} from ['"]([^'"]+)/)?.[1];
-assert(route, 'Skypack must expose a browser ESM default export');
-const response = await fetch(new URL(route, entryUrl), { signal: AbortSignal.timeout(20000) });
-assert.equal(response.status, 200);
-const source = await response.text();
+const source = fs.readFileSync(new URL('../data/lib/rapier.js', import.meta.url), 'utf8');
 const { default: RAPIER } = await import('data:text/javascript;base64,' + Buffer.from(source).toString('base64'));
 await RAPIER.init();
 const world = globalThis.GhostPhysics.create(RAPIER);
@@ -100,6 +94,8 @@ assert(Math.abs(shapes[0].center[1] - 32) < 0.001);
 // Exercise the user's complete authored assembly, not only the synthetic hinge.
 const config = JSON.parse(fs.readFileSync(new URL('../data/config.json', import.meta.url), 'utf8'));
 context.servoPreview.nodes = config.components.map(c => ({ ...c,
+  // Test assembly welding independently of saved support constraints below.
+  constraints: undefined, rotationConstraints: undefined,
   parent: c.parent == null ? null : config.components.findIndex(other => other.name === c.parent) + 1,
   position: ['x', 'y', 'z'].map(axis => c.position?.[axis] || 0),
   rotation: ['x', 'y', 'z'].map(axis => c.rotation?.[axis] || 0),
@@ -244,4 +240,4 @@ for (const axis of ['x', 'y', 'z']) {
     assert(guide.current.every(Number.isFinite));
   } finally { check.destroy(); }
 }
-console.log('Rapier CDN integration passed: real WASM, gravity, floor/robot collisions, debug geometry, limits, cleanup, free root Null, motor joints and scene transforms.');
+console.log('Local Rapier integration passed: real WASM, gravity, floor/robot collisions, debug geometry, limits, cleanup, free root Null, motor joints and scene transforms.');

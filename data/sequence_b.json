@@ -38,6 +38,15 @@
         12
       ],
       "durationMs": 1000
+    },
+    {
+      "type": "color",
+      "rgb": [
+        255,
+        0,
+        0
+      ],
+      "durationMs": 100
     }
   ],
   "finish": false

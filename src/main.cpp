@@ -2,10 +2,11 @@
 
 #include <ArduinoOTA.h>
 #include <Wire.h>
-#include <ESP8266WiFi.h>
+#include "DevicePlatform.h"
 #include <LittleFS.h>
 
 #include "AppLog.h"
+#include "BoardRgbLed.h"
 #include "OledDisplay.h"
 #include "Pca9685ServoTest.h"
 #include "ServoConfiguration.h"
@@ -19,6 +20,7 @@
 #endif
 
 OledDisplay oledDisplay;
+BoardRgbLed boardRgbLed;
 Pca9685ServoTest servos[kMaximumServoCount];
 ServoConfiguration servoConfigurations[kMaximumServoCount];
 uint8_t servoCount = 0;
@@ -36,17 +38,44 @@ bool servoConfigurationsReady = false;
 namespace {
 constexpr unsigned long kServoControllerRetryIntervalMilliseconds = 5000;
 constexpr bool kEnableOled = false;  // Onboard display is faulty; do not probe or initialize it.
-constexpr uint8_t kI2cSdaPin = 4;   // NodeMCU D2: external PCA9685 SDA.
-constexpr uint8_t kI2cSclPin = 5;   // NodeMCU D1: external PCA9685 SCL.
+constexpr uint8_t kI2cSdaPin = 4;   // External PCA9685 SDA (GPIO number on both boards).
+constexpr uint8_t kI2cSclPin = 5;   // External PCA9685 SCL (GPIO number on both boards).
 constexpr uint8_t kOledSdaPin = 12;
 constexpr uint8_t kOledSclPin = 14;
 
 bool ensureI2cBusReady(const char* phase, uint8_t sdaPin = kI2cSdaPin, uint8_t sclPin = kI2cSclPin) {
   const bool sdaWasLow = digitalRead(sdaPin) == LOW;
   const bool sclWasLow = digitalRead(sclPin) == LOW;
-  // ESP8266 Wire.status() clocks a slave holding SDA low, with bounded waits.
-  // Unlike endTransmission(), it can clear a transfer interrupted by reset.
+#if defined(ARDUINO_ARCH_ESP32)
+  // Release a slave interrupted mid-transfer, without waiting indefinitely.
+  if (sdaWasLow && !sclWasLow) {
+    Wire.end();
+    pinMode(sdaPin, INPUT_PULLUP);
+    pinMode(sclPin, OUTPUT_OPEN_DRAIN);
+    digitalWrite(sclPin, HIGH);
+    for (uint8_t pulse = 0; pulse < 9 && digitalRead(sdaPin) == LOW; ++pulse) {
+      digitalWrite(sclPin, LOW);
+      delayMicroseconds(10);
+      digitalWrite(sclPin, HIGH);
+      const unsigned long started = micros();
+      while (digitalRead(sclPin) == LOW && micros() - started < 1000) delayMicroseconds(1);
+      if (digitalRead(sclPin) == LOW) break;
+      delayMicroseconds(10);
+    }
+    // Generate STOP with SCL released, then restore the driver.
+    pinMode(sdaPin, OUTPUT_OPEN_DRAIN);
+    digitalWrite(sdaPin, LOW);
+    delayMicroseconds(10);
+    digitalWrite(sdaPin, HIGH);
+    Wire.begin(sdaPin, sclPin);
+    Wire.setClock(100000);
+    Wire.setTimeOut(10);
+  }
+  const uint8_t status = 0;
+#else
+  // ESP8266 Wire.status() performs bounded bus recovery.
   const uint8_t status = Wire.status();
+#endif
   const bool sdaLow = digitalRead(sdaPin) == LOW;
   const bool sclLow = digitalRead(sclPin) == LOW;
   if (status != 0 || sdaLow || sclLow) {
@@ -110,26 +139,30 @@ void beginOta() {
 #endif
 
 void printStartupInfo() {
-  AppLog::println("ESP8266 device information");
-  AppLog::printf("Chip ID: 0x%06X\n", ESP.getChipId());
+  AppLog::println("Controller device information");
+  AppLog::printf("Chip ID: 0x%06X\n", DevicePlatform::chipId());
   AppLog::printf("CPU frequency: %u MHz\n", ESP.getCpuFreqMHz());
   AppLog::printf("SDK version: %s\n", ESP.getSdkVersion());
-  AppLog::printf("Arduino core version: %s\n", ESP.getCoreVersion().c_str());
-  AppLog::printf("Reset reason: %s\n", ESP.getResetReason().c_str());
+  AppLog::printf("Arduino core version: %s\n", DevicePlatform::coreVersion().c_str());
+  AppLog::printf("Reset reason: %s\n", DevicePlatform::resetReason().c_str());
 
   AppLog::println("Memory:");
   AppLog::printf("  Free heap: %u bytes\n", ESP.getFreeHeap());
   AppLog::printf("  Largest free heap block: %u bytes\n",
-                 ESP.getMaxFreeBlockSize());
-  AppLog::printf("  Heap fragmentation: %u%%\n", ESP.getHeapFragmentation());
+                 DevicePlatform::largestFreeBlock());
+  AppLog::printf("  Heap fragmentation: %u%%\n", DevicePlatform::heapFragmentation());
   AppLog::printf("  Sketch size: %u bytes\n", ESP.getSketchSize());
   AppLog::printf("  Free OTA sketch space: %u bytes\n",
                  ESP.getFreeSketchSpace());
 
   AppLog::println("Flash:");
+#if !defined(ARDUINO_ARCH_ESP32)
   AppLog::printf("  Chip ID: 0x%06X\n", ESP.getFlashChipId());
+#endif
   AppLog::printf("  Configured size: %u bytes\n", ESP.getFlashChipSize());
+#if !defined(ARDUINO_ARCH_ESP32)
   AppLog::printf("  Detected size: %u bytes\n", ESP.getFlashChipRealSize());
+#endif
   AppLog::printf("  Speed: %u Hz\n", ESP.getFlashChipSpeed());
   AppLog::printf("  Mode: %u\n", static_cast<unsigned>(ESP.getFlashChipMode()));
 }
@@ -142,7 +175,11 @@ bool oledRespondsAt(uint8_t address) {
 bool initializeOledOnPins(int sdaPin, int sclPin) {
   Wire.begin(sdaPin, sclPin);
   Wire.setClock(100000);
+#if defined(ARDUINO_ARCH_ESP32)
+  Wire.setTimeOut(10);
+#else
   Wire.setClockStretchLimit(1000);
+#endif
   if (!ensureI2cBusReady("OLED startup", sdaPin, sclPin)) return false;
   AppLog::printf("Checking OLED on SDA GPIO%d, SCL GPIO%d...\n",
                  sdaPin, sclPin);
@@ -164,6 +201,7 @@ bool initializeOledOnPins(int sdaPin, int sclPin) {
 }
 
 void setup() {
+  boardRgbLed.begin();
   Serial.begin(115200);
   AppLog::begin();
   delay(100);
@@ -196,7 +234,11 @@ void setup() {
   AppLog::printf("External servo I2C: SDA GPIO%u, SCL GPIO%u.\n", kI2cSdaPin, kI2cSclPin);
   Wire.begin(kI2cSdaPin, kI2cSclPin);  // External PCA9685 bus: SDA D2/GPIO4, SCL D1/GPIO5.
   Wire.setClock(100000);
+#if defined(ARDUINO_ARCH_ESP32)
+  Wire.setTimeOut(10);
+#else
   Wire.setClockStretchLimit(1000);
+#endif
   const bool servoBusReady = ensureI2cBusReady("servo startup");
   filesystemReady = LittleFS.begin();
   if (!filesystemReady) {
@@ -222,7 +264,11 @@ void setup() {
     WiFi.mode(WIFI_STA);
     WiFi.setAutoReconnect(true);
     snprintf(otaHostname, sizeof(otaHostname), "ghost-controller");
+#if defined(ARDUINO_ARCH_ESP32)
+    WiFi.setHostname(otaHostname);
+#else
     WiFi.hostname(otaHostname);
+#endif
     WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
     AppLog::printf("Connecting to Wi-Fi '%s'...\n", WIFI_SSID);
     if (OTA_PASSWORD[0] == '\0') {
