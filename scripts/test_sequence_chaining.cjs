@@ -5,8 +5,9 @@ const source = fs.readFileSync(require('node:path').join(__dirname, '../data/app
 const playback = source.slice(source.indexOf('function sequenceStepWaitMilliseconds('), source.indexOf('function stopSequence('));
 const motion = name => ({ name, durationMs: 100 });
 const call = slot => ({ type: 'sequence', slot });
-async function run(root, slots, stopOnRead = false, servoReady = true) {
-  const moves = [], messages = [], views = [];
+async function run(root, slots, stopOnRead = false, servoReady = true, options = {}) {
+  const moves = [], messages = [], views = [], reads = [];
+  let waitCount = 0;
   const context = {
     controllerRebooting: false, sequencePlaying: false, sweepRunning: false,
     sequence: root, selectedSequenceSlot: 'a', playbackRateInput: { value: '1' },
@@ -18,13 +19,18 @@ async function run(root, slots, stopOnRead = false, servoReady = true) {
         name: context.playbackSequenceView.sequence.steps[context.sequenceStepIndex].name });
     }, stopContinuousServos() {},
     activeStepMotionEnds: () => [], isEligible: () => true,
-    async applySequenceStep(step) { moves.push(step.name); }, async waitForStep() {},
-    async readSequence(slot) { if (stopOnRead) context.sequenceRunId++; if (!slots[slot]) throw new Error('Missing sequence'); return slots[slot]; }
+    async applySequenceStep(step) { moves.push(step.name); },
+    async waitForStep() {
+      waitCount++;
+      if ((options.stopAfterMoves && moves.length >= options.stopAfterMoves) ||
+          (options.stopAfterWaits && waitCount >= options.stopAfterWaits)) context.sequenceRunId++;
+    },
+    async readSequence(slot) { reads.push(slot); if (stopOnRead) context.sequenceRunId++; if (!slots[slot]) throw new Error('Missing sequence'); return slots[slot]; }
   };
   vm.createContext(context);
   vm.runInContext(playback, context);
   await context.playSequence();
-  return { moves, messages, views, context };
+  return { moves, messages, views, context, reads, waitCount };
 }
 (async () => {
   const root = { loop: false, steps: [motion('A1'), call('b'), motion('A2')] };
@@ -51,14 +57,37 @@ async function run(root, slots, stopOnRead = false, servoReady = true) {
     b: { loop: false, steps: [color] }
   }, false, false);
   assert.deepEqual(unavailable.moves, ['skip unavailable', 'LED'], 'missing servo controller must not block mixed or nested LED playback');
-  const circular = await run(root, { b: { steps: [call('a')] } });
-  assert.deepEqual(circular.moves, []);
-  assert(circular.messages.some(text => text.includes('Circular')));
+  const circular = await run(root, { b: { steps: [motion('B1'), call('a')] } }, false, true, { stopAfterMoves: 10000 });
+  assert.equal(circular.moves.length, 10000, 'Circular chains run beyond the old expansion limit');
+  assert.deepEqual(circular.moves.slice(0, 6), ['A1', 'B1', 'A1', 'B1', 'A1', 'B1']);
+  assert.deepEqual(circular.reads, ['b'], 'Each sequence is cached once across all repetitions');
+  assert(!circular.messages.some(text => text.includes('Playback failed')));
+  const self = await run({ steps: [motion('A'), call('a')] }, {}, false, true, { stopAfterMoves: 1000 });
+  assert.equal(self.moves.length, 1000);
+  assert(self.moves.every(name => name === 'A'));
+  assert.deepEqual(self.reads, [], 'Self jumps reuse the root sequence');
+  const approach = await run({ steps: [motion('approach'), call('b')] },
+    { b: { steps: [motion('repeat'), call('b')] } }, false, true, { stopAfterMoves: 100 });
+  assert.equal(approach.moves[0], 'approach');
+  assert(approach.moves.slice(1).every(name => name === 'repeat'), 'Approach runs once, then B repeats');
+  const callsOnly = await run({ steps: [call('b'), motion('unreachable')] },
+    { b: { steps: [call('a')] } }, false, true, { stopAfterWaits: 100 });
+  assert.equal(callsOnly.waitCount, 100, 'Cycles without executed motion yield and remain stoppable');
+  assert.deepEqual(callsOnly.moves, []);
+  const tenSlots = {};
+  for (let i = 1; i < 10; i++) {
+    const slot = 'abcdefghij'[i], next = 'abcdefghij'[(i + 1) % 10];
+    tenSlots[slot] = { steps: [motion(slot), call(next)] };
+  }
+  const allSlots = await run({ steps: [motion('a'), call('b')] }, tenSlots, false, true, { stopAfterMoves: 1000 });
+  assert.equal(allSlots.moves.length, 1000);
+  assert.deepEqual(allSlots.moves.slice(0, 10), [...'abcdefghij']);
+  assert.equal(allSlots.reads.length, 9);
   const missing = await run(root, {});
   assert.deepEqual(missing.moves, []);
   const stopped = await run(root, { b: { steps: [motion('B')] } }, true);
   assert.deepEqual(stopped.moves, []);
   const empty = await run({ steps: [call('b')] }, { b: { steps: [] } });
   assert(empty.messages.some(text => text.includes('no motion steps')));
-  console.log('Sequence chaining passed: nested call/return, child loop runs once, cycles, missing files, empty chains and cancellation during load.');
+  console.log('Sequence chaining passed: nested call/return, explicit self/circular jumps, bounded slot cache, missing files, empty chains and cancellation during load.');
 })().catch(error => { console.error(error); process.exitCode = 1; });

@@ -1,0 +1,91 @@
+[{
+  "_id": {
+    "$oid": "6ae0c36efe235cca8dc52cdb"
+  },
+  "id": "servo-mg996r",
+  "name": "MG996R metal gear servo"
+},
+{
+  "_id": {
+    "$oid": "6ae0c36efe235cca8dc52ce0"
+  },
+  "id": "motor-mount",
+  "name": "Motor mount pair"
+},
+{
+  "_id": {
+    "$oid": "6ae0c36efe235cca8dc52ce4"
+  },
+  "id": "breadboard",
+  "name": "Solderless breadboard"
+},
+{
+  "_id": {
+    "$oid": "6ae0c36efe235cca8dc52cdc"
+  },
+  "id": "servo-sg90",
+  "name": "SG90 micro servo"
+},
+{
+  "_id": {
+    "$oid": "6ae0c36efe235cca8dc52cdf"
+  },
+  "id": "servo-bracket",
+  "name": "Aluminium servo bracket"
+},
+{
+  "_id": {
+    "$oid": "6ae0c36efe235cca8dc52ce2"
+  },
+  "id": "motor-driver",
+  "name": "Dual motor driver module"
+},
+{
+  "_id": {
+    "$oid": "6ae0c36efe235cca8dc52cde"
+  },
+  "id": "jumper-wires",
+  "name": "Jumper wire pack"
+},
+{
+  "_id": {
+    "$oid": "6ae0c36efe235cca8dc52cdd"
+  },
+  "id": "xt60-pair",
+  "name": "XT60 connector pair"
+},
+{
+  "_id": {
+    "$oid": "6ae0c36efe235cca8dc52ce3"
+  },
+  "id": "ultrasonic-sensor",
+  "name": "Ultrasonic distance sensor"
+},
+{
+  "_id": {
+    "$oid": "6ae0c36efe235cca8dc52ce1"
+  },
+  "id": "esp32-board",
+  "name": "ESP32 development board"
+},
+{
+  "_id": {
+    "$oid": "6ae1bdf8fe235cca8dc52ced"
+  },
+  "id": "RDS3235",
+  "name": "DSservo RDS3235 35kg Coreless Servo"
+},
+{
+  "_id": {
+    "$oid": "6ae1d10cfe235cca8dc52cef"
+  },
+  "id": "PCA9685",
+  "name": "PCA9685 16-Channel Servo Controller"
+},
+{
+  "_id": {
+    "$oid": "6ae1d2812d2f0291cec6f0bd"
+  },
+  "id": "long-u-bracket",
+  "name": "Long-arm Aluminium U Bracket"
+}]

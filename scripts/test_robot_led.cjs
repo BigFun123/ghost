@@ -1,0 +1,35 @@
+const { loadComponentRegistry } = require('../devserver/component-registry');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const vm = require('node:vm');
+const source = fs.readFileSync(path.join(__dirname, '../data/app.js'), 'utf8');
+let redraws = 0, glows = 0;
+const stops = [];
+const ctx = { canvas: { width: 64, height: 64 }, save() {}, restore() {}, beginPath() {}, arc() {}, fill() {},
+  createRadialGradient() { glows++; return { addColorStop: (position, color) => stops.push({ position, color }) }; } };
+const depths = new WeakMap();
+const context = { previewLedColor: [0, 0, 0], previewDepthBuffers: depths,
+  previewWorldPoint: (_, __, point) => point, drawServoPreview() { redraws++; } };
+vm.createContext(context);
+  loadComponentRegistry(context);
+vm.runInContext(source.slice(source.indexOf('function setPreviewLedColor('), source.indexOf('function drawServoPreview(')), context);
+context.setPreviewLedColor([255, 0, 128]);
+assert.equal(redraws, 1);
+vm.runInContext('componentRegistry', context).drawOverlays({ ctx, nodes: [{objectType: 'Robot'}], project: () => [30,30,2], ratio: 1, worldPoint: context.previewWorldPoint, depthBuffers: depths, state: {ledRgb: context.previewLedColor} });
+assert.equal(glows, 1);
+assert(stops.some(stop => stop.color === 'rgba(255,0,128,1)'));
+const depth = new Float64Array(64 * 64).fill(-Infinity);
+depth[30 * 64 + 30] = 10;
+depths.set(ctx, depth);
+vm.runInContext('componentRegistry', context).drawOverlays({ ctx, nodes: [{objectType: 'Robot'}], project: () => [30,30,2], ratio: 1, worldPoint: context.previewWorldPoint, depthBuffers: depths, state: {ledRgb: context.previewLedColor} });
+assert.equal(glows, 1, 'Glow is hidden when another surface occludes the LED');
+context.setPreviewLedColor([0, 0, 0], false);
+vm.runInContext('componentRegistry', context).drawOverlays({ ctx, nodes: [{objectType: 'Robot'}], project: () => [30,30,2], ratio: 1, worldPoint: context.previewWorldPoint, depthBuffers: depths, state: {ledRgb: context.previewLedColor} });
+assert.equal(glows, 1, 'An off LED has no glow');
+context.setPreviewLedColor([300, 0, 0]);
+assert.deepEqual(Array.from(context.previewLedColor), [0, 0, 0]);
+const colors = [];
+context.drawESP32({ box: (_, __, color) => colors.push(color), label() {}, ledColor: '#ff0080' });
+assert(colors.includes('#ff0080'), 'LED die in the board model uses the active RGB color');
+console.log('Robot LED passed: RGB model color, glow, black/off state, invalid RGB and depth occlusion.');

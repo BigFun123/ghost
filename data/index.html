@@ -6,32 +6,68 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="color-scheme" content="dark">
   <title>GHOST Robot Controller</title>
+  <link rel="icon" type="image/png" sizes="64x64" href="data:image/png;base64,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">
   <link rel="stylesheet" href="/style.css">
   <link rel="stylesheet" href="./style.css">
 </head>
 
 <body>
-  <div id="status">
-    <div class="titlecontainer" id="title">
-    <h2>EPISTEMIC</h2>
-    <h2>|</h2>
-    <h2>GHOST Robot Controller</h2>
-    </div>
-    
-    <div class="status-actions">
-      <button id="rebootButton" type="button">Reboot</button>
-    </div>
-
-  </div>
   <nav class="tabs" role="tablist" aria-label="Controller pages">
+    <button class="tab titlecontainer" id="title" type="button" role="tab" aria-selected="false" aria-controls="aboutPanel" tabindex="-1">
+    <img class="title-ghost" src="data:image/png;base64,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" width="32" height="32" alt="">
+    <span class="brand-title">EPISTEMIC</span>
+    <span class="brand-title">|</span>
+    <span class="brand-title">GHOST Robot Controller</span>
+    </button>
     <button class="tab" id="mixerTab" role="tab" aria-selected="true" aria-controls="mixerPanel" tabindex="0">Servo
       Mixer</button>
     <button class="tab" id="overviewTab" role="tab" aria-selected="false" aria-controls="overviewPanel"
       tabindex="-1">Overview</button>
-    <button class="tab" id="servoSettingsTab" role="tab" aria-selected="false" aria-controls="servoSettingsPanel" tabindex="-1">Servo Settings</button>
+    <button class="tab" id="servoSettingsTab" hidden role="tab" aria-selected="false" aria-controls="servoSettingsPanel" tabindex="-1">Servo Settings</button>
     <button class="tab" id="setupTab" role="tab" aria-selected="false" aria-controls="setupPanel" tabindex="-1">Setup</button>
+    <button class="tab" id="shopTab" type="button" role="tab" aria-selected="false" aria-controls="shopPanel" tabindex="-1">Shop</button>
+    <button class="tab" id="apiTab" type="button" role="tab" aria-selected="false" aria-controls="apiPanel" tabindex="-1">API</button>
   </nav>
   <main>
+    <div class="panel" id="aboutPanel" role="tabpanel" aria-labelledby="title" hidden>
+      <section class="about-content">
+        <div class="about-heading">
+          <img class="title-ghost" src="data:image/png;base64,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" width="32" height="32" alt="">
+          <h1>About Ghost</h1>
+        </div>
+        <p>Ghost brings servo control, motion sequences and a 3D robot view together in your browser.</p>
+        <p>Configure your robot, explore movements in offline simulation, and monitor live controller and sensor metrics.</p>
+        <h2>Capabilities</h2>
+        <ul class="about-capabilities">
+          <li><strong>3D view</strong> &mdash; Explore your robot assembly, inspect components and watch commanded movements from different angles.</li>
+          <li><strong>Servo mixer</strong> &mdash; Set servo positions, adjust motion modes and speed, and control individual outputs with mute and solo.</li>
+          <li><strong>Sequencer</strong> &mdash; Build, save and play repeatable motion sequences, with looping and adjustable playback speed.</li>
+          <li><strong>Metrics</strong> &mdash; Follow servo angles and simulated sensor readings over time, choosing which measurements to display.</li>
+          <li><strong>Physics</strong> &mdash; Explore simulated gravity and collisions, drop test objects and inspect collision shapes in the 3D view.</li>
+          <li><strong>Offline simulation</strong> &mdash; Configure your robot and try movements in the browser without sending commands to hardware.</li>
+          <li><strong>Reinforcement Learning</strong> <span class="subtle">(coming soon)</span> &mdash; Train robot behaviours through trial and feedback in simulation.</li>
+        </ul>
+        <h2>Sim to real</h2>
+        <p>Build and explore your robot in simulation, then use the same robot configuration, servo mixer and motion sequences to control its physical counterpart through a connected Ghost controller.</p>
+        <p>Map the simulated servos to the controller's physical outputs so movements in the app drive the matching servos on your real robot. Offline simulation lets you try movements first; when connected to hardware, the controls send commands to the robot.</p>
+        <p class="subtle">Simulation is a starting point: check servo directions, movement limits and clearances on the physical robot, since real loads and motion can differ.</p>
+        <aside class="about-warning" aria-labelledby="servoSafetyTitle">
+          <h2 id="servoSafetyTitle">Warning: powerful servos</h2>
+          <p>High-torque servos, including models sold as &ldquo;150 kg&rdquo; servos, can cause serious crushing and pinching injuries. A small movement can apply substantial force through a horn or linkage.</p>
+          <ul>
+            <li>Keep hands, hair, clothing and tools clear of moving joints. Secure the robot and keep other people outside its movement area.</li>
+            <li>Before fitting horns, adjusting linkages or working on wiring, disconnect servo power and support any parts that could fall when torque is removed.</li>
+            <li>For first tests, use small movements and low speeds. Check directions, limits and clearances before running a sequence.</li>
+            <li>Keep a physical servo-power disconnect within reach. Browser controls, mute, output-off commands and a network connection are not a safety-rated emergency stop.</li>
+            <li>Use the manufacturer's specified supply voltage, suitable wiring and protection. Follow the safety instructions for your servo and power supply.</li>
+          </ul>
+          <p class="subtle">Simulation cannot guarantee safe behaviour on hardware. Treat the robot as capable of unexpected movement whenever servo power is connected.</p>
+        </aside>
+        <h2>Epistemic</h2>
+        <p>Ghost is software by Epistemic, an AI and robotics company.</p>
+        <p><a href="https://epistemic.co.za/ghost.html" target="_blank" rel="noopener noreferrer">epistemic.co.za/ghost.html</a></p>
+      </section>
+    </div>
     <div class="panel" id="overviewPanel" role="tabpanel" aria-labelledby="overviewTab" hidden>
       <div class="grid">
         <section>
@@ -81,6 +117,41 @@
         <h2>Serial output</h2>
         <textarea id="serialLog" aria-label="Recent serial output" readonly></textarea>
       </section>
+
+    </div>
+    <div class="panel" id="apiPanel" role="tabpanel" aria-labelledby="apiTab" hidden>
+      <section class="api-reference" aria-labelledby="apiTitle">
+        <h2 id="apiTitle">API endpoints</h2>
+        <p class="subtle">Paths are relative to the current host. GET reads data; POST changes settings or controls hardware. JSON bodies use Content-Type: application/json, except /api/servo, which uses application/x-www-form-urlencoded. Reboot needs no body. Examples below are request bodies. Servo command indices are 1-based; saved PCA9685 output channels are 0-based.</p>
+        <div class="api-table-scroll">
+          <table>
+            <caption class="subtle">Controller firmware and local development server routes</caption>
+            <thead><tr><th scope="col">Method</th><th scope="col">Endpoint</th><th scope="col">Available on</th><th scope="col">Inputs and behavior</th></tr></thead>
+            <tbody>
+              <tr><td><code>GET</code></td><td><code>/api/sensors</code></td><td>Controller only</td><td>VL53L0X distance, validity, readiness and sample age; also included in /api/status.</td></tr>
+              <tr><td><code>GET</code></td><td><code>/api/status</code></td><td>Controller only</td><td>Device, Wi-Fi and current servo status.</td></tr>
+              <tr><td><code>GET</code></td><td><code>/api/log</code></td><td>Controller only</td><td>Recent serial log output (plain text).</td></tr>
+              <tr><td><code>POST</code></td><td><code>/api/servo</code></td><td>Controller only</td><td>Required: channel (1-based configured servo index, not the PCA9685 output number), plus at least one of angle (integer 0–180), enabled (0/1 mute state), or outputEnabled (0/1 physical output power). Optional: motionMode (immediate, smooth, linear), smooth (legacy 0/1), speed (L/M/H; default H), playbackRate (0.001–10; default 1). Configured angle limits still apply.<pre><code>channel=1&amp;outputEnabled=0</code></pre></td></tr>
+              <tr><td><code>POST</code></td><td><code>/api/servos</code></td><td>Controller only</td><td>Required commands array: 1 entry per commanded servo, no duplicate channels, at most the configured servo count. Each entry requires channel (1-based), enabled (boolean), playbackRate (0.001–10). Optional angle (integer 0–180), motionMode (immediate/smooth/linear; default immediate), speed (L/M/H; default M), durationMs (100–60000, linear mode only). Does not enable physical output power; use /api/servo for that.<pre><code>{&quot;commands&quot;:[{&quot;channel&quot;:1,&quot;enabled&quot;:false,&quot;playbackRate&quot;:1}]}</code></pre></td></tr>
+              <tr><td><code>POST</code></td><td><code>/api/led</code></td><td>Controller only</td><td>Required rgb: array of exactly three integers 0–255, in red, green, blue order.<pre><code>{&quot;rgb&quot;:[32,128,255]}</code></pre></td></tr>
+              <tr><td><code>GET</code></td><td><code>/api/robots</code></td><td>Controller + local server</td><td>List robot folders and the active robot; controller also reports the runtime robot.</td></tr>
+              <tr><td><code>POST</code></td><td><code>/api/robot/select</code></td><td>Controller + local server</td><td>Required name: existing robot folder name (string). Changes the active robot; reboot to apply it to hardware.<pre><code>{&quot;name&quot;:&quot;PanTilt&quot;}</code></pre></td></tr>
+              <tr><td><code>POST</code></td><td><code>/api/robot/rename</code></td><td>Controller + local server</td><td>Required from: existing folder name; to: new folder name (strings). Destination must not already exist.<pre><code>{&quot;from&quot;:&quot;PanTilt&quot;,&quot;to&quot;:&quot;CameraRig&quot;}</code></pre></td></tr>
+              <tr><td><code>GET</code></td><td><code>/config.json</code></td><td>Controller + local server</td><td>Read robot configuration. Optional ?robot=NAME; otherwise uses the active robot.</td></tr>
+              <tr><td><code>GET</code></td><td><code>/api/sequence/{slot}</code></td><td>Controller + local server</td><td>Read sequence A-J. Replace {slot} with a lowercase letter a-j; optional ?robot=NAME.</td></tr>
+              <tr><td><code>POST</code></td><td><code>/api/sequence/{slot}</code></td><td>Controller + local server</td><td>Required loop (boolean) and steps (array, at most 32); optional finish (boolean). Motion steps require angles (one integer 0–180 per configured servo) and durationMs (100–60000); optional servoStates array has one entry per servo. Other steps: delay with durationMs 1–60000; color with rgb [0–255,0–255,0–255] and durationMs 100–60000; sequence with slot a–j. Optional ?robot=NAME. Saves a sequence; does not play it.<pre><code>{&quot;loop&quot;:false,&quot;finish&quot;:false,&quot;steps&quot;:[{&quot;type&quot;:&quot;delay&quot;,&quot;durationMs&quot;:1000},{&quot;type&quot;:&quot;color&quot;,&quot;rgb&quot;:[0,128,255],&quot;durationMs&quot;:500}]}</code></pre></td></tr>
+              <tr><td><code>GET</code></td><td><code>/api/sequence</code></td><td>Controller + local server</td><td>Legacy sequence read endpoint; optional ?slot=a and ?robot=NAME.</td></tr>
+              <tr><td><code>POST</code></td><td><code>/api/sequence</code></td><td>Controller + local server</td><td>Same body as /api/sequence/{slot}. Optional ?slot=a (a–j) and ?robot=NAME.<pre><code>{&quot;loop&quot;:false,&quot;steps&quot;:[]}</code></pre></td></tr>
+              <tr><td><code>POST</code></td><td><code>/api/config/servo</code></td><td>Controller only</td><td>Required originalName (existing servo name) and servo (settings object). Copy the servo from /config.json, edit its fields, then submit it. Address is a string such as 0x41; channel is the physical PCA9685 output 0–15. Startup angle 0–180; pulse endpoints 500–2500 microseconds, minimum below maximum. Optional camera object and ?robot=NAME. Reboot to apply hardware settings.<pre><code>{&quot;originalName&quot;:&quot;Servo 1&quot;,&quot;servo&quot;:{&quot;address&quot;:&quot;0x41&quot;}}</code></pre></td></tr>
+              <tr><td><code>POST</code></td><td><code>/api/config/preview</code></td><td>Controller only</td><td>Required components (complete resulting list, 1–60) and originalNames (previous component names in saved order, for conflict detection). Each component supplies name, objectType, parent (name or null), position and rotation ({x,y,z}); retain its model and settings. Use originalName for renamed components, null for new ones. Optional robot and camera. Creating a robot requires originalNames:null and a full configuration object. Save then reboot to apply hardware changes.</td></tr>
+              <tr><td><code>POST</code></td><td><code>/api/reboot</code></td><td>Controller only</td><td>No request body required. Returns HTTP 202 with Reboot scheduled, then restarts the controller. Unsaved browser edits are not saved by this request.</td></tr>
+              <tr><td><code>GET</code></td><td><code>/api/devserver</code></td><td>Local server only</td><td>Identify the local development server and active robot.</td></tr>
+              <tr><td><code>POST</code></td><td><code>/api/config/local</code></td><td>Local server only</td><td>Required configuration (full robot configuration object) and originalNames (previous component names in saved order; null when creating a new robot). Optional robot (folder name). Read /config.json first and preserve component settings. Writes files on the PC, not the device. Configuration must fit the controller’s 24576-byte limit.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="subtle">Responses: read endpoints return JSON (except the plain-text log); command responses and errors are generally plain text. Check HTTP status before parsing: 400 invalid input, 409 configuration conflict or restart required, 413 request too large, 503 unavailable hardware or storage. Use the response text for the specific error.</p>
+      </section>
     </div>
     <div class="panel mixer-layout" id="mixerPanel" role="tabpanel" aria-labelledby="mixerTab">
       <div class="mixer">
@@ -89,6 +160,7 @@
             <button class="mix-button servo-center" id="centerButton" type="button" aria-label="Center active servos" title="Center active servos">CA</button>
             <span class="channel-number">CONTROLLER</span>
           </div>
+          <h2 id="controllerRobotName">Robot</h2>
           <div class="meter" aria-hidden="true"></div>
 
           <div class="master-actions">
@@ -102,6 +174,7 @@
               <span id="servoPowerLabel">ON</span>
             </button>
             <button class="mix-button stop-button" id="stopSweepButton" type="button" disabled>STOP</button>
+            <button class="mix-button" id="metricsToggle" type="button" aria-expanded="true" aria-controls="metricsPanel">METRICS</button>
             <button class="mix-button" id="sequencerToggle" type="button" aria-expanded="true" aria-controls="sequencerPanel">SEQUENCER</button>
             <button class="mix-button" id="previewToggle" type="button" aria-expanded="true" aria-controls="previewPanel">Deactivate 3D view</button>
           </div>
@@ -141,8 +214,7 @@
               </div>
             </div>
             <div class="sequence-modes">
-              <label class="loop-setting" for="sequenceLoop"><input id="sequenceLoop" type="checkbox"> Loop</label>
-              <label class="loop-setting" for="sequenceFinish" title="Wait for commanded motion to finish instead of advancing on the step timer"><input id="sequenceFinish" type="checkbox"> Finish</label>
+              <button class="mix-button" id="sequenceFinish" type="button" aria-pressed="false" title="Switch between waiting for motion to finish and advancing on the step timer">Timed Mode</button>
             </div>
           </div>
           <div class="sequencer-actions">
@@ -157,15 +229,17 @@
           <li class="sequence-add-actions" id="sequenceAddActions">
             <button class="mix-button" id="appendSequenceStep" type="button" aria-label="Add motion step" title="Add motion step">+</button>
             <button class="mix-button" id="appendSequenceCall" type="button" aria-label="Change sequence" title="Change sequence">&gt;</button>
-            <button class="mix-button" id="appendSequenceColor" type="button" aria-label="Add LED color step" title="Add LED color step">o</button>
+            <button class="mix-button" id="appendSequenceColor" type="button" aria-label="Add LED color step" title="Add LED color step">&#x263C;</button>
+            <button class="mix-button" id="appendSequenceDelay" type="button" aria-label="Add delay step" title="Add delay step">&#x23F1;</button>
           </li>
           </ol>
         </section>
       </div>
       <section id="previewPanel" class="servo-preview" aria-labelledby="previewTitle">
         <div class="preview-toolbar">
-          <h2 id="previewTitle">3D output</h2>
+          <h2 id="previewTitle">3D</h2>
           <div class="preview-toolbar-actions">
+            <label class="preview-labels-toggle" title="Simulate locally without sending device commands"><input id="previewOffline" type="checkbox"> Offline</label>
             <div id="previewCameraViews" class="preview-camera-views" role="group" aria-label="Camera views">
               <button type="button" data-view="left" title="View from left">Left</button>
               <button type="button" data-view="right" title="View from right">Right</button>
@@ -177,9 +251,9 @@
               <button id="previewReset" type="button" title="Reset camera">Reset camera</button>
             </div>
             <button id="previewGrid" type="button" aria-pressed="true" title="Show or hide the grid">Grid</button>
-            <label class="preview-labels-toggle"><input id="previewLabels" type="checkbox"> Labels</label>
+            <button id="previewLabels" type="button" aria-pressed="false" title="Show or hide component labels">Labels</button>
             <div class="preview-physics-controls" role="group" aria-label="Physics simulation">
-              <button id="previewPhysics" type="button" aria-pressed="true">Physics</button>
+              <button id="previewPhysics" type="button" aria-pressed="false">Physics</button>
               <button id="physicsDrop" type="button" disabled>Drop cube</button>
               <button id="physicsClear" type="button" disabled>Clear cubes</button>
               <button id="physicsResetRobot" type="button" disabled>Reset robot</button>
@@ -192,16 +266,14 @@
             </div>
           </div>
         </div>
-        <label class="preview-mode"><input id="previewOffline" type="checkbox"> Offline simulation (no device commands)</label>
         <div id="previewWindow">
-          <p>Left-drag to orbit / Right-drag to pan / Scroll to zoom</p>
           <div class="preview-viewport">
             <video id="webcamVideo" autoplay muted playsinline hidden aria-label="Live webcam background"></video>
             <canvas id="servoScene" tabindex="0" aria-label="3D servo setup. Arrow keys orbit; plus and minus zoom."></canvas>
+            <div id="componentSceneViews" aria-label="Component scene views"></div>
             <output hidden id="previewTransform" class="preview-transform" aria-live="polite" aria-label="Selected servo transform"></output>
           </div>
 
-          <p class="subtle">Commanded angles, not measured feedback. Grey = unavailable, orange = output off, blue = muted. Parent attachments follow the shaft; 90� is neutral.</p>
         </div>
       </section>
     </div>
@@ -209,57 +281,110 @@
       <section class="setup-hierarchy">
         <div class="setup-components-header">
           <h2>Components</h2>
-          <div class="setup-config-actions">
-            <button id="previewDownload" type="button">Download config</button>
-            <button id="previewSave" type="button">Save config</button>
+          <div class="setup-component-actions" role="group" aria-label="Robot actions">
+            <button id="previewNewRobot" type="button" title="Create a new robot">New</button>
+            <button id="previewLoadRobot" type="button" title="Load a saved robot">Load</button>
+            <button id="setupSaveConfig" type="button" title="Save this robot">Save</button>
+            <button id="rebootButton" type="button" title="Restart the physical controller">Reboot</button>
           </div>
         </div>
-        <label>Add component
-          <select id="previewAddComponent">
-            <option value="">Select component to add...</option>
-            <option value="standard">Servo: TD-7120</option>
-            <option value="micro">Servo: Micro 9g</option>
-            <option>U Bracket Short</option><option>U Bracket Long</option>
-            <option>Null</option>
-          </select>
-        </label>
-        <button id="previewAdd" type="button" disabled>Add</button>
-        <button id="previewRemove" type="button">Remove selected component</button>
-        <p class="subtle">Removing a component moves its children to its parent. Keep at least one servo.</p>
-        <p class="subtle">Drag a component onto its new parent, or onto Root to detach it. Local position and rotation stay unchanged.</p>
+        <button id="previewRemove" type="button">Remove Component</button>
+        <p class="subtle">Removing a component moves its children to its parent.</p>
+        <p class="subtle">Drag a component onto its new parent, or onto Scene to detach it. Local position and rotation stay unchanged.</p>
         <ul id="previewServoSelection" class="component-tree" aria-label="Component hierarchy"></ul>
       </section>
       <section id="previewEditingControls" class="setup-options">
         <h2 id="setupSelectedName" contenteditable="plaintext-only" role="textbox" aria-label="Selected component name" aria-multiline="false" spellcheck="false" title="Click to rename. Enter to apply; Escape to cancel.">Component options</h2>
+        <div id="setupAddComponent" hidden>
+          <input id="previewAddComponent" type="hidden" value="">
+          <div id="setupComponentChoices" class="component-choices"></div>
+          <button id="previewAdd" type="button" disabled hidden>Add component</button>
+          <p class="subtle">Click a component to add it to the Robot. Drag it in the list to change its parent.</p>
+        </div>
+        <div id="setupRobotControls" hidden>
+          <label>Robot name <input id="robotName" type="text" maxlength="40" value="Robot"></label>
+          <label>Robot folder <select id="robotFolders" aria-label="Robot folder"></select></label>
+          <div class="setup-config-actions">
+            <div class="setup-config-group" role="group" aria-label="Robot files">
+              <button id="previewSave" type="button">Save robot</button>
+            </div>
+            <div class="setup-config-group" role="group" aria-label="Config transfer">
+              <button id="previewDownload" type="button">Download config</button>
+              <button id="previewImportRobot" type="button">Import config</button>
+              <input id="robotFile" type="file" accept=".json,application/json" hidden>
+            </div>
+          </div>
+        </div>
+        <div id="setupServoGroup" class="servo-settings-fields" hidden></div>
         <div id="setupTransforms" class="setup-transforms">
           <fieldset id="setupWebcamControls" hidden>
             <legend>Webcam</legend>
             <button id="webcamToggle" type="button" aria-pressed="false" aria-controls="webcamVideo">Activate webcam</button>
           </fieldset>
         </div>
-        <small class="subtle">Positions in mm; rotations in degrees, relative to the parent. Shift-click nudges for 1 mm / 1 degree.</small>
+        <small id="setupTransformHint" class="subtle">Positions in mm; rotations in degrees, relative to the parent. Shift-click nudges for 1 mm / 1 degree.</small>
+        <h3 id="servoSettingsTitle" hidden>Servo settings</h3>
+        <form id="servoSettingsForm" hidden>
+          <div id="servoSettingsFields" class="servo-settings-fields"></div>
+          <p>Saved settings take effect after restarting the controller and reloading this page.</p>
+        </form>
 
         <p class="subtle">Save, restart the controller and reload after adding or removing servos. Review saved sequences after changing the servo list.</p>
       </section>
     </div>
     <div class="panel mixer-layout" id="servoSettingsPanel" role="tabpanel" aria-labelledby="servoSettingsTab" hidden>
       <section class="servo-settings">
-        <h2 id="servoSettingsTitle">Servo Settings</h2>
-        <p>Select a servo's settings button in the mixer to edit its configuration.</p>
-        <form id="servoSettingsForm" hidden>
-          <div id="servoSettingsFields" class="servo-settings-fields"></div>
-          <p>Saved settings take effect after restarting the controller and reloading this page.</p>
-          <button id="servoSettingsSave" type="submit">Save config</button>
-          <button id="servoSettingsBack" type="button">Back to mixer</button>
-        </form>
 
+        <p>Servo settings are available in the component Setup.</p>
+
+
+      </section>
+    </div>
+    <div class="panel" id="shopPanel" role="tabpanel" aria-labelledby="shopTab" hidden>
+      <section class="shop-content">
+        <p><a href="https://epistemic.co.za/shop/" target="_blank" rel="noopener noreferrer">Browse online shop</a></p>
+    <h1>Robot parts shop</h1>
+    <p>Review your robot parts and enter their catalogue product IDs. Uncheck components you do not need to buy. Quantities for the same product are combined.</p>
+    <p>The online shop opens separately because its security settings prevent embedding it here.</p>
+    <form id="shopForm">
+      <label>Robot name <input id="shopRobotName" required maxlength="200"></label>
+      <button id="shopReload" type="button">Reload current robot</button>
+      <div style="overflow:auto;margin:20px 0">
+        <table style="width:100%"><thead><tr><th>Include</th><th>Photo</th><th>Component</th><th>Catalogue product ID</th><th>Quantity</th></tr></thead><tbody id="shopParts"></tbody></table>
+      </div>
+      <p>Sending shares this robot definition and selected parts with Epistemic for 24 hours. Anyone with the resulting link can view it. This prepares a parts list; checkout happens in the shop.</p>
+      <button id="shopSend" type="submit" disabled>Prepare parts in online shop</button>
+    </form>
+    <p id="shopImagesStatus" class="subtle" role="status" aria-live="polite"></p>
+    <p id="shopStatus" role="status" aria-live="polite">Loading robot…</p>
+    <p><a id="shopResult" hidden target="_blank" rel="noopener noreferrer">Open prepared parts in online shop</a></p>
       </section>
     </div>
   </main>
 
+  <section id="metricsPanel" aria-labelledby="metricsTitle">
+    <div class="metrics-header">
+      <h2 id="metricsTitle">Metrics</h2>
+      <span class="subtle">Last 30 seconds - commanded servos / simulated sensors</span>
+      <div class="metrics-categories" role="group" aria-label="Metric categories">
+        <button type="button" data-metric-category="rotation" aria-pressed="true">Rotation</button>
+        <button type="button" data-metric-category="gyro" aria-pressed="false">Gyro</button>
+        <button type="button" data-metric-category="velocity" aria-pressed="false">Velocity</button>
+        <button type="button" data-metric-category="motion" aria-pressed="false">Motion</button>
+        <button type="button" data-metric-category="compass" aria-pressed="false">Compass</button>
+        <button type="button" data-metric-category="barometer" aria-pressed="false">Barometer</button>
+        <button type="button" data-metric-category="temperature" aria-pressed="false">Temperature</button>
+        <button type="button" data-metric-category="power" aria-pressed="false">Power</button>
+      </div>
+    </div>
+    <div id="metricsLegend" class="metrics-legend" aria-label="Component traces; click to show or hide"></div>
+    <canvas id="metricsGraph" role="img" aria-label="Live component metrics over the last 30 seconds"></canvas>
+  </section>
+
   <footer id="statusBar" aria-label="Controller status">
     <div class="status-messages" role="status" aria-live="polite" aria-atomic="false">
     <span id="connection">Loading device status…</span>
+    <span id="connectionError" class="status-error"></span>
     <span id="macroStatus">Ready</span>
     <span id="macroError" class="status-error"></span>
     <span id="sequencerStatus">Loading saved sequence…</span>
@@ -272,13 +397,33 @@
     <span id="updated"></span>
     </div>
   </footer>
-  <script src="./3dmodels/TD-7120.js" defer></script>
-  <script src="./3dmodels/micro9g.js" defer></script>
-  <script src="./3dmodels/UBracketShort.js" defer></script>
-  <script src="./3dmodels/UBracketLong.js" defer></script>
+  <script src="./components/registry.js" defer></script>
+  <script src="./components/Servo.js" defer></script>
+  <script src="./components/Null.js" defer></script>
+  <script src="./components/Target.js" defer></script>
+  <script src="./components/Panel50.js" defer></script>
+  <script src="./components/Panel100.js" defer></script>
+  <script src="./components/Box.js" defer></script>
+  <script src="./components/Extrusion2020.js" defer></script>
+  <script src="./components/ESP32.js" defer></script>
+  <script src="./components/PCA9685.js" defer></script>
+  <script src="./components/TD-7120MG.js" defer></script>
+  <script src="./components/micro9g.js" defer></script>
+  <script src="./components/VL53L0X.js" defer></script>
+  <script src="./components/GY-801.js" defer></script>
+  <script src="./components/OV7670.js" defer></script>
+  <script src="./components/LinearActuator.js" defer></script>
+  <script src="./components/UBracketShort.js" defer></script>
+  <script src="./components/UBracketLong.js" defer></script>
   <script src="./3d-renderer.js" defer></script>
+  <script src="./camera-renderer.js" defer></script>
+  <script src="./component-panels.js" defer></script>
   <script src="./physics.js" defer></script>
+  <script src="./metrics.js" defer></script>
+  <script src="./dialog.js" defer></script>
+  <script src="./power-meters.js" defer></script>
   <script src="./app.js" defer></script>
+  <script src="./shop.js" defer></script>
 </body>
 
 </html>

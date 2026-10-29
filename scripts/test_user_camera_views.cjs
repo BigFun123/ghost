@@ -6,15 +6,20 @@ const buttons = ['u1', 'u2', 'u3'].map(slot => ({ dataset: { userView: slot }, a
 const view = { yaw: 1, pitch: 0.2, roll: 0.3, zoom: 2, panX: 10, panY: 20, panZ: 30, perspective: true };
 const messages = [];
 const context = {
-  servoPreview: { ...view, showGrid: false },
+  servoPreview: { ...view, nodes: [], selected: null, showGrid: false },
+  performance: { now: () => 0 }, requestAnimationFrame() { return 1; }, cancelAnimationFrame() {},
   document: { querySelectorAll: () => buttons, getElementById: () => ({ disabled: false }) },
   updatePreviewProjectionButton() {}, savePreviewCamera() {}, drawServoPreview() { context.updateUserCameraButtons(); }, setText(id, value) { messages.push(value); }
 };
 vm.createContext(context);
+vm.runInContext(source.slice(source.indexOf('function cancelPreviewCameraFocus('), source.indexOf('function panPreviewFloor(')), context);
 vm.runInContext(source.slice(source.indexOf('function currentUserCameraView('), source.indexOf('function initializeServoPreview(')), context);
 context.initializeUserCameraViews({ camera: { views: { u2: view } } });
 context.servoPreview.zoom = 1;
 buttons[1].click({ shiftKey: false });
+assert.equal(context.servoPreview.zoom, 1, 'Recall begins at the current view');
+context.updatePreviewCameraFocus(350);
+context.updateUserCameraButtons();
 for (const key of Object.keys(view)) assert.equal(context.servoPreview[key], view[key]);
 assert.equal(buttons[1].attrs['aria-pressed'], 'true');
 assert.equal(context.servoPreview.showGrid, false);
@@ -23,6 +28,7 @@ buttons[2].click({ shiftKey: true });
 assert.equal(context.servoPreview.userViews.u3.panY, 99);
 context.servoPreview.panY = 0;
 buttons[2].click({ shiftKey: false });
+context.updatePreviewCameraFocus(350);
 assert.equal(context.servoPreview.panY, 99);
 buttons[0].click({ shiftKey: false });
 assert(messages.at(-1).includes('no saved view'));

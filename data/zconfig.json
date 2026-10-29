@@ -1,0 +1,206 @@
+{
+  "servoController": {
+    "id": 1,
+    "name": "PCA9685",
+    "description": "16 Channel Servo Controller",
+    "address": "0x41",
+    "frequency": 50,
+    "shopProductId": "PCA9685"
+  },
+  "modes": [
+    {
+      "name": "immediate",
+      "label": "-",
+      "description": "Moves the servo to the target position immediately."
+    },
+    {
+      "name": "linear",
+      "label": "/",
+      "description": "Moves the servo to the target position at a constant speed.",
+      "speeds": [
+        {
+          "name": "slow",
+          "label": "S",
+          "description": "Moves the servo to the target position at a slow speed."
+        },
+        {
+          "name": "medium",
+          "label": "M",
+          "description": "Moves the servo to the target position at a medium speed."
+        },
+        {
+          "name": "fast",
+          "label": "F",
+          "description": "Moves the servo to the target position at a fast speed."
+        }
+      ]
+    },
+    {
+      "name": "ease-in-out",
+      "label": "~",
+      "description": "Moves the servo to the target position with an ease-in-out motion profile.",
+      "speeds": [
+        {
+          "name": "slow",
+          "label": "S",
+          "description": "Moves the servo to the target position at a slow speed."
+        },
+        {
+          "name": "medium",
+          "label": "M",
+          "description": "Moves the servo to the target position at a medium speed."
+        },
+        {
+          "name": "fast",
+          "label": "F",
+          "description": "Moves the servo to the target position at a fast speed."
+        }
+      ]
+    }
+  ],
+  "components": [
+    {
+      "name": "Servo 1",
+      "objectType": "Servo",
+      "model": "standard",
+      "type": "TD-7120",
+      "parent": null,
+      "position": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "rotation": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "address": "0x41",
+      "channel": 0,
+      "enabled": false,
+      "reversed": false,
+      "continuous": false,
+      "initialMotionMode": "immediate",
+      "startupAngle": 90,
+      "minAngle": 0,
+      "maxAngle": 180,
+      "minPulseMicroseconds": 500,
+      "maxPulseMicroseconds": 2500,
+      "shopProductId": null
+    },
+    {
+      "name": "Servo 2",
+      "objectType": "Servo",
+      "parent": "Servo 1",
+      "position": {
+        "x": 0,
+        "y": 10,
+        "z": 20
+      },
+      "rotation": {
+        "x": 90,
+        "y": 0,
+        "z": 0
+      },
+      "model": "standard",
+      "type": "TD-7120",
+      "address": "0x41",
+      "channel": 1,
+      "enabled": false,
+      "reversed": false,
+      "continuous": false,
+      "initialMotionMode": "immediate",
+      "startupAngle": 90,
+      "minAngle": 0,
+      "maxAngle": 180,
+      "minPulseMicroseconds": 500,
+      "maxPulseMicroseconds": 2500,
+      "shopProductId": null
+    },
+    {
+      "name": "Servo 3",
+      "objectType": "Servo",
+      "parent": "Servo 2",
+      "position": {
+        "x": -55,
+        "y": 0,
+        "z": 0
+      },
+      "rotation": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "model": "standard",
+      "type": "TD-7120",
+      "address": "0x41",
+      "channel": 2,
+      "enabled": true,
+      "reversed": false,
+      "continuous": false,
+      "initialMotionMode": "immediate",
+      "startupAngle": 90,
+      "minAngle": 0,
+      "maxAngle": 180,
+      "minPulseMicroseconds": 500,
+      "maxPulseMicroseconds": 2500,
+      "shopProductId": null
+    },
+    {
+      "name": "U Bracket Long 1",
+      "objectType": "U Bracket Long",
+      "parent": "Servo 3",
+      "position": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "rotation": {
+        "x": 0,
+        "y": -180,
+        "z": 0
+      },
+      "shopProductId": "long-u-bracket"
+    }
+  ],
+  "camera": {
+    "yaw": 3.0666662597656287,
+    "pitch": 0.3944451904296875,
+    "roll": 0,
+    "zoom": 1.7429090242841914,
+    "panX": -44.564157492474266,
+    "panY": 0,
+    "panZ": 17.197437773620543,
+    "perspective": true,
+    "showGrid": false,
+    "views": {
+      "u1": {
+        "yaw": 1.4967228404667712,
+        "pitch": 0.02962890625000006,
+        "roll": 0,
+        "zoom": 1.4556124579492953,
+        "panX": -3.7983645686298826,
+        "panY": 113.09928097974048,
+        "panZ": 108.54935009450459,
+        "perspective": true
+      },
+      "u2": {
+        "yaw": 2.2823336203866678,
+        "pitch": 0.28148101806640624,
+        "roll": 0,
+        "zoom": 1.1655633209342564,
+        "panX": -4.299665020223282,
+        "panY": 113.43800738959422,
+        "panZ": 101.79412252066243,
+        "perspective": true
+      }
+    },
+    "webcam": {
+      "active": false,
+      "deviceId": "c8d78d74d13f84b7ded8713da9ca1fa10358354daa2672cfcab44e699dfc2857",
+      "fit": "cover",
+      "mirror": false,
+      "controls": {}
+    }
+  }
+}

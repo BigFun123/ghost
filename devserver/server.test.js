@@ -64,6 +64,46 @@ test('serves local assets and saves only valid same-origin config requests', asy
   }
 });
 
+test('proxies shop requests through the local origin', async () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'lamp-shop-proxy-'));
+  fs.writeFileSync(path.join(directory, 'config.json'), fs.readFileSync(path.resolve(__dirname, '../data/robots/Arm/config.json')));
+  const upstreamRequests = [];
+  const upstream = http.createServer((request, response) => {
+    const chunks = [];
+    request.on('data', chunk => chunks.push(chunk));
+    request.on('end', () => {
+      upstreamRequests.push({ method: request.method, url: request.url, body: Buffer.concat(chunks).toString('utf8') });
+      response.writeHead(200, { 'Content-Type': 'application/json' });
+      response.end(request.url === '/api/shop'
+        ? JSON.stringify({ products: [{ id: 'TD-7120MG' }] })
+        : JSON.stringify({ ok: true, shopUrl: '/shop/?import=test' }));
+    });
+  });
+  await new Promise(resolve => upstream.listen(0, '127.0.0.1', resolve));
+  const server = createServer(directory, 'http://127.0.0.1:' + upstream.address().port);
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  const base = 'http://127.0.0.1:' + server.address().port;
+  try {
+    const marker = await (await fetch(base + '/api/devserver')).json();
+    assert.equal(marker.shopProxy, true);
+    assert.deepEqual(await (await fetch(base + '/api/shop')).json(), { products: [{ id: 'TD-7120MG' }] });
+    const payload = { robot: { name: 'Test' }, items: [{ id: 'TD-7120MG', quantity: 1 }] };
+    assert.deepEqual(await (await fetch(base + '/api/shop-init', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+    })).json(), { ok: true, shopUrl: '/shop/?import=test' });
+    assert.deepEqual(upstreamRequests, [
+      { method: 'GET', url: '/api/shop', body: '' },
+      { method: 'POST', url: '/api/shop-init', body: JSON.stringify(payload) }
+    ]);
+  } finally {
+    await Promise.all([
+      new Promise(resolve => server.close(resolve)),
+      new Promise(resolve => upstream.close(resolve))
+    ]);
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test('persists local sequences, reloads them, and rejects invalid updates', async () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'lamp-sequence-'));
   const configuration = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../data/config.json'), 'utf8'));

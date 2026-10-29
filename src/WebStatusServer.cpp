@@ -1,7 +1,12 @@
 #include "WebStatusServer.h"
 
 #include "AppLog.h"
+#include "RobotStorage.h"
+#include "ComponentCatalog.h"
 #include "BoardRgbLed.h"
+#include "DistanceSensor.h"
+
+extern DistanceSensor distanceSensor;
 
 extern BoardRgbLed boardRgbLed;
 #include "ServoPositionStore.h"
@@ -12,6 +17,24 @@ extern BoardRgbLed boardRgbLed;
 #include <math.h>
 
 namespace {
+bool validPowerRange(JsonObjectConst component) {
+  for (const char* key : {"minPowerWatts", "maxPowerWatts"}) {
+    const JsonVariantConst value = component[key];
+    if (!value.isNull() && (!value.is<double>() || !isfinite(value.as<double>()) || value.as<double>() < 0)) return false;
+  }
+  for (const char* key : {"powerVoltageVolts", "idleCurrentAmps", "runningCurrentAmps", "peakCurrentAmps"}) {
+    const JsonVariantConst value = component[key];
+    if (!value.isNull() && (!value.is<double>() || !isfinite(value.as<double>()) ||
+        (String(key) == "powerVoltageVolts" ? value.as<double>() <= 0 : value.as<double>() < 0))) return false;
+  }
+  const JsonVariantConst idle = component["idleCurrentAmps"], running = component["runningCurrentAmps"], peak = component["peakCurrentAmps"];
+  if (!idle.isNull() && !peak.isNull() && idle.as<double>() > peak.as<double>()) return false;
+  if (!running.isNull() && ((!idle.isNull() && running.as<double>() < idle.as<double>()) ||
+      (!peak.isNull() && running.as<double>() > peak.as<double>()))) return false;
+  return component["minPowerWatts"].isNull() || component["maxPowerWatts"].isNull() ||
+      component["minPowerWatts"].as<double>() <= component["maxPowerWatts"].as<double>();
+}
+
 bool validRgb(JsonVariantConst value) {
   if (!value.is<JsonArrayConst>() || value.size() != 3) return false;
   for (JsonVariantConst channel : value.as<JsonArrayConst>()) {
@@ -44,7 +67,7 @@ bool validCameraSettings(JsonVariantConst value) {
     if (!camera[key].is<double>() || !isfinite(camera[key].as<double>())) return false;
   }
   if (fabs(camera["pitch"].as<double>()) > 1.570796326795 ||
-      camera["zoom"].as<double>() < 0.2 || camera["zoom"].as<double>() > 5 || !camera["perspective"].is<bool>()) return false;
+      camera["zoom"].as<double>() < 0.001 || camera["zoom"].as<double>() > 5 || !camera["perspective"].is<bool>()) return false;
   if (!camera["views"].isUnbound()) {
     if (!camera["views"].is<JsonObjectConst>()) return false;
     for (JsonPairConst entry : camera["views"].as<JsonObjectConst>()) {
@@ -55,7 +78,7 @@ bool validCameraSettings(JsonVariantConst value) {
       for (const char* key : {"yaw", "pitch", "roll", "zoom", "panX", "panY", "panZ"}) {
         if (!view[key].is<double>() || !isfinite(view[key].as<double>())) return false;
       }
-      if (fabs(view["pitch"].as<double>()) > 1.570796326795 || view["zoom"].as<double>() < 0.2 ||
+      if (fabs(view["pitch"].as<double>()) > 1.570796326795 || view["zoom"].as<double>() < 0.001 ||
           view["zoom"].as<double>() > 5 || !view["perspective"].is<bool>()) return false;
     }
   }
@@ -131,6 +154,38 @@ void WebStatusServer::begin(Pca9685ServoTest* servos,
   } else {
     AppLog::println("LittleFS mount failed; upload the filesystem image.");
   }
+  runtimeRobot_ = RobotStorage::active();
+  initializeServoPositionStorage();
+  server_.on("/api/robots", HTTP_GET, [this]() {
+    JsonDocument manifest;
+    File file = LittleFS.open("/robots.json", "r");
+    if (file) { deserializeJson(manifest, file); file.close(); }
+    if (manifest["active"].isNull()) manifest["active"] = "";
+    if (!manifest["robots"].is<JsonArray>()) manifest["robots"].to<JsonArray>();
+    manifest["runtime"] = runtimeRobot_;
+    String body; serializeJson(manifest, body);
+    server_.send(200, "application/json", body);
+  });
+  server_.on("/api/robot/rename", HTTP_POST, [this]() {
+    JsonDocument names;
+    if (rebootPending_ || !filesystemReady_ || server_.arg("plain").length() > 256 || deserializeJson(names, server_.arg("plain"))) {
+      server_.send(400, "text/plain", "Invalid robot rename request"); return;
+    }
+    const String from = names["from"] | "", to = names["to"] | "";
+    if (!RobotStorage::renameRobot(from, to)) { server_.send(409, "text/plain", "Could not rename robot; check the name and that its folder does not already exist"); return; }
+    if (runtimeRobot_ == from) { runtimeRobot_ = to; initializeServoPositionStorage(); }
+    server_.send(200, "text/plain", "Robot folder renamed");
+  });
+  server_.on("/api/robot/select", HTTP_POST, [this]() {
+    JsonDocument body;
+    if (rebootPending_ || server_.arg("plain").length() > 256 || deserializeJson(body, server_.arg("plain")) || !RobotStorage::select(body["name"] | "")) {
+      server_.send(400, "text/plain", "Invalid robot selection"); return;
+    }
+    if (runtimeRobot_ != RobotStorage::active()) {
+      for (uint8_t i = 0; i < servoCount_; ++i) servos_[i].setOutputEnabled(false);
+    }
+    server_.send(200, "text/plain", "Robot selected. Restart to apply on hardware.");
+  });
   server_.on("/", HTTP_GET, [this]() {
     sendAsset("/index.html", "text/html; charset=utf-8");
   });
@@ -140,29 +195,34 @@ void WebStatusServer::begin(Pca9685ServoTest* servos,
   server_.on("/3d-renderer.js", HTTP_GET, [this]() {
     sendAsset("/3d-renderer.js", "application/javascript; charset=utf-8");
   });
+  server_.on("/metrics.js", HTTP_GET, [this]() {
+    sendAsset("/metrics.js", "application/javascript; charset=utf-8");
+  });
+  server_.on("/shop.html", HTTP_GET, [this]() {
+    sendAsset("/shop.html", "text/html; charset=utf-8");
+  });
+  server_.on("/shop.js", HTTP_GET, [this]() {
+    sendAsset("/shop.js", "application/javascript; charset=utf-8");
+  });
   server_.on("/app.js", HTTP_GET, [this]() {
     sendAsset("/app.js", "application/javascript; charset=utf-8");
   });
+  for (const char* path : {"/camera-renderer.js", "/component-panels.js",
+                           "/dialog.js", "/power-meters.js"}) {
+    server_.on(path, HTTP_GET, [this, path]() {
+      sendAsset(path, "application/javascript; charset=utf-8");
+    });
+  }
   server_.on("/physics.js", HTTP_GET, [this]() {
     sendAsset("/physics.js", "application/javascript; charset=utf-8");
   });
   server_.on("/lib/rapier.js", HTTP_GET, [this]() {
     sendAsset("/lib/rapier.js", "application/javascript; charset=utf-8");
   });
-  server_.on("/3dmodels/TD-7120.js", HTTP_GET, [this]() {
-    sendAsset("/3dmodels/TD-7120.js", "application/javascript; charset=utf-8");
-  });
-  server_.on("/3dmodels/micro9g.js", HTTP_GET, [this]() {
-    sendAsset("/3dmodels/micro9g.js", "application/javascript; charset=utf-8");
-  });
-  server_.on("/3dmodels/UBracketShort.js", HTTP_GET, [this]() {
-    sendAsset("/3dmodels/UBracketShort.js", "application/javascript; charset=utf-8");
-  });
-  server_.on("/3dmodels/UBracketLong.js", HTTP_GET, [this]() {
-    sendAsset("/3dmodels/UBracketLong.js", "application/javascript; charset=utf-8");
-  });
   server_.on("/config.json", HTTP_GET, [this]() {
-    sendAsset("/config.json", "application/json; charset=utf-8");
+    const String robot = server_.hasArg("robot") ? server_.arg("robot") : RobotStorage::active();
+    if (robot.length() && !RobotStorage::validName(robot)) { server_.send(400, "text/plain", "Invalid robot name"); return; }
+    sendAsset(RobotStorage::path("config.json", robot).c_str(), "application/json; charset=utf-8");
   });
   server_.on("/api/config/servo", HTTP_POST, [this]() {
     saveServoConfiguration();
@@ -178,6 +238,14 @@ void WebStatusServer::begin(Pca9685ServoTest* servos,
     }
     server_.sendHeader("Connection", "close");
     server_.send(202, "text/plain; charset=utf-8", "Reboot scheduled");
+  });
+  server_.on("/api/sensors", HTTP_GET, [this]() {
+    JsonDocument document;
+    distanceSensor.appendStatus(document["vl53l0x"].to<JsonObject>());
+    String body;
+    serializeJson(document, body);
+    server_.sendHeader("Cache-Control", "no-store");
+    server_.send(200, "application/json; charset=utf-8", body);
   });
   server_.on("/api/status", HTTP_GET, [this]() {
     sendStatus();
@@ -208,7 +276,21 @@ void WebStatusServer::begin(Pca9685ServoTest* servos,
   server_.on("/api/servo", HTTP_POST, [this]() {
     setServoAngle();
   });
+  server_.on("/api/servos", HTTP_POST, [this]() {
+    setServoBatch();
+  });
   server_.onNotFound([this]() {
+    const String uri = server_.uri();
+    const String componentPrefix = "/components/";
+    if (server_.method() == HTTP_GET && uri.startsWith(componentPrefix) && uri.endsWith(".js")) {
+      const String file = uri.substring(componentPrefix.length());
+      bool valid = file.length() && file.indexOf("..") < 0;
+      for (size_t i = 0; i < file.length(); ++i) {
+        const char c = file[i];
+        if (!isAlphaNumeric(c) && c != '.' && c != '-' && c != '_') valid = false;
+      }
+      if (valid) { sendAsset(uri.c_str(), "application/javascript; charset=utf-8"); return; }
+    }
     server_.send(404, "text/plain; charset=utf-8", "Not found");
   });
   server_.begin();
@@ -290,12 +372,17 @@ void WebStatusServer::sendLog() {
 }
 
 void WebStatusServer::sendSequence() {
+  const String robot = server_.hasArg("robot") ? server_.arg("robot") : RobotStorage::active();
+  if ((robot.length() && !RobotStorage::validName(robot)) || !LittleFS.exists(RobotStorage::path("config.json", robot))) {
+    server_.send(404, "text/plain", "Robot not found"); return;
+  }
+  const uint8_t storedServoCount = RobotStorage::servoCount(robot);
   const String slot = server_.uri().startsWith("/api/sequence/") ? server_.uri().substring(14) : (server_.hasArg("slot") ? server_.arg("slot") : String());
   if (server_.hasArg("slot") && (slot.length() != 1 || slot[0] < 'a' || slot[0] > 'j')) {
     server_.send(400, "text/plain; charset=utf-8", "Sequence slot must be a-j");
     return;
   }
-  const String sequencePath = slot.length() ? String("/sequence_") + slot + ".json" : String("/sequence.json");
+  const String sequencePath = slot.length() ? RobotStorage::path(String("sequence_") + slot + ".json", robot) : RobotStorage::path("sequence.json", robot);
   if (!filesystemReady_) {
     server_.send(503, "text/plain; charset=utf-8",
                  "Sequence storage unavailable: LittleFS is not mounted");
@@ -303,7 +390,7 @@ void WebStatusServer::sendSequence() {
   }
 
   const String readPath = slot == "a" && !LittleFS.exists(sequencePath)
-      ? String("/sequence.json") : sequencePath;
+      ? RobotStorage::path("sequence.json", robot) : sequencePath;
   File file = LittleFS.open(readPath, "r");
   if (!file) {
     server_.sendHeader("Cache-Control", "no-store");
@@ -343,6 +430,14 @@ void WebStatusServer::sendSequence() {
 
   const JsonArrayConst steps = document["steps"].as<JsonArrayConst>();
   for (JsonObjectConst step : steps) {
+    if (step["type"] == "delay") {
+      if (!step["durationMs"].is<uint32_t>() ||
+          step["durationMs"].as<uint32_t>() < 1 || step["durationMs"].as<uint32_t>() > 60000) {
+        server_.send(400, "text/plain", "Delay must be between 1 and 60000 milliseconds");
+        return;
+      }
+      continue;
+    }
     if (step["type"] == "color") {
       if (!validRgb(step["rgb"]) || !step["durationMs"].is<uint32_t>() ||
           step["durationMs"].as<uint32_t>() < 100 || step["durationMs"].as<uint32_t>() > 60000) {
@@ -364,13 +459,13 @@ void WebStatusServer::sendSequence() {
         step["servoStates"].as<JsonArrayConst>();
     const JsonVariantConst duration = step["durationMs"];
     const JsonVariantConst servoStatesValue = step["servoStates"];
-    if (angles.isNull() || angles.size() != servoCount_ ||
+    if (angles.isNull() || angles.size() != storedServoCount ||
         !duration.is<uint32_t>() ||
         duration.as<uint32_t>() < kMinimumStepDurationMilliseconds ||
         duration.as<uint32_t>() > kMaximumStepDurationMilliseconds ||
         (!servoStatesValue.isNull() &&
          (!servoStatesValue.is<JsonArrayConst>() ||
-          servoStates.size() != servoCount_))) {
+          servoStates.size() != storedServoCount))) {
       AppLog::println("Stored sequence contains an invalid step.");
       server_.send(500, "text/plain; charset=utf-8",
                    "Stored sequence data is invalid");
@@ -387,7 +482,7 @@ void WebStatusServer::sendSequence() {
     }
     for (JsonVariantConst servoState : servoStates) {
       if (!servoState.is<int>() || servoState.as<int>() < 0 ||
-          servoState.as<int>() > 23) {
+          (servoState.as<int>() > 55 || (servoState.as<int>() & 24) == 24 || (servoState.as<int>() & 36) == 36)) {
         AppLog::println("Stored sequence contains invalid servo settings.");
         server_.send(500, "text/plain; charset=utf-8",
                      "Stored sequence data is invalid");
@@ -401,12 +496,17 @@ void WebStatusServer::sendSequence() {
 }
 
 void WebStatusServer::saveSequence() {
+  const String robot = server_.hasArg("robot") ? server_.arg("robot") : RobotStorage::active();
+  if ((robot.length() && !RobotStorage::validName(robot)) || !LittleFS.exists(RobotStorage::path("config.json", robot))) {
+    server_.send(404, "text/plain", "Robot not found"); return;
+  }
+  const uint8_t storedServoCount = RobotStorage::servoCount(robot);
   const String slot = server_.uri().startsWith("/api/sequence/") ? server_.uri().substring(14) : (server_.hasArg("slot") ? server_.arg("slot") : String());
   if (server_.hasArg("slot") && (slot.length() != 1 || slot[0] < 'a' || slot[0] > 'j')) {
     server_.send(400, "text/plain; charset=utf-8", "Sequence slot must be a-j");
     return;
   }
-  const String sequencePath = slot.length() ? String("/sequence_") + slot + ".json" : String("/sequence.json");
+  const String sequencePath = slot.length() ? RobotStorage::path(String("sequence_") + slot + ".json", robot) : RobotStorage::path("sequence.json", robot);
   if (rebootPending_) {
     server_.send(503, "text/plain; charset=utf-8", "Controller is rebooting");
     return;
@@ -444,6 +544,14 @@ void WebStatusServer::saveSequence() {
   }
 
   for (JsonObjectConst step : steps) {
+    if (step["type"] == "delay") {
+      if (!step["durationMs"].is<uint32_t>() ||
+          step["durationMs"].as<uint32_t>() < 1 || step["durationMs"].as<uint32_t>() > 60000) {
+        server_.send(400, "text/plain", "Delay must be between 1 and 60000 milliseconds");
+        return;
+      }
+      continue;
+    }
     if (step["type"] == "color") {
       if (!validRgb(step["rgb"]) || !step["durationMs"].is<uint32_t>() ||
           step["durationMs"].as<uint32_t>() < 100 || step["durationMs"].as<uint32_t>() > 60000) {
@@ -465,11 +573,11 @@ void WebStatusServer::saveSequence() {
         step["servoStates"].as<JsonArrayConst>();
     const JsonVariantConst duration = step["durationMs"];
     const JsonVariantConst servoStatesValue = step["servoStates"];
-    if (angles.isNull() || angles.size() != servoCount_ ||
+    if (angles.isNull() || angles.size() != storedServoCount ||
         !duration.is<uint32_t>() ||
         (!servoStatesValue.isNull() &&
          (!servoStatesValue.is<JsonArrayConst>() ||
-          servoStates.size() != servoCount_))) {
+          servoStates.size() != storedServoCount))) {
       server_.send(400, "text/plain; charset=utf-8",
                    "Each step must contain one angle per servo and a duration");
       return;
@@ -492,7 +600,7 @@ void WebStatusServer::saveSequence() {
     }
     for (JsonVariantConst servoState : servoStates) {
       if (!servoState.is<int>() || servoState.as<int>() < 0 ||
-          servoState.as<int>() > 23) {
+          (servoState.as<int>() > 55 || (servoState.as<int>() & 24) == 24 || (servoState.as<int>() & 36) == 36)) {
         server_.send(400, "text/plain; charset=utf-8",
                      "Servo settings contain an invalid mute, solo, mode, or speed value");
         return;
@@ -523,6 +631,8 @@ void WebStatusServer::saveSequence() {
 }
 
 void WebStatusServer::saveServoConfiguration() {
+  const String robot = server_.hasArg("robot") ? server_.arg("robot") : RobotStorage::active();
+  if (robot.length() && !RobotStorage::validName(robot)) { server_.send(400, "text/plain", "Invalid robot name"); return; }
   if (rebootPending_) {
     server_.send(503, "text/plain; charset=utf-8", "Controller is rebooting");
     return;
@@ -537,7 +647,7 @@ void WebStatusServer::saveServoConfiguration() {
   const char* originalName = request["originalName"] | "";
   const JsonObjectConst update = request["servo"].as<JsonObjectConst>();
   if (!originalName[0] || update.isNull()) { fail(400, "Missing servo settings"); return; }
-  File file = LittleFS.open("/config.json", "r");
+  File file = LittleFS.open(RobotStorage::path("config.json", robot), "r");
   if (!file || file.size() > 24576) { if (file) file.close(); fail(500, "Could not read config"); return; }
   JsonDocument config;
   const auto error = deserializeJson(config, file); file.close();
@@ -550,9 +660,11 @@ void WebStatusServer::saveServoConfiguration() {
   if (target.isNull()) { fail(409, "Servo not found; reload the page"); return; }
   // Keep unknown metadata and other components; only settings exposed by the form change.
   for (const char* key : {"name", "type", "address", "channel", "startupAngle", "minPulseMicroseconds", "maxPulseMicroseconds",
-                         "minAngle", "maxAngle", "initialMotionMode", "enabled", "reversed", "continuous", "model", "parent", "position", "rotation"}) {
-    if (!update[key].isNull() || String(key) == "parent") target[key].set(update[key]);
+                         "minAngle", "maxAngle", "initialMotionMode", "enabled", "reversed", "continuous", "model", "parent", "position", "rotation", "minPowerWatts", "maxPowerWatts", "powerVoltageVolts", "idleCurrentAmps", "runningCurrentAmps", "peakCurrentAmps"}) {
+    if (!update[key].isNull() || String(key) == "parent" ||
+        ((!update[key].isUnbound()) && (String(key) == "minPowerWatts" || String(key) == "maxPowerWatts" || String(key) == "powerVoltageVolts" || String(key) == "idleCurrentAmps" || String(key) == "runningCurrentAmps" || String(key) == "peakCurrentAmps"))) target[key].set(update[key]);
   }
+  if (!validPowerRange(target)) { fail(400, "Invalid power range in watts"); return; }
   const char* newName = target["name"] | "";
   if (!newName[0] || strlen(newName) > 31) { fail(400, "Servo name must contain 1-31 bytes"); return; }
   for (JsonObject entry : entries) {
@@ -587,7 +699,7 @@ void WebStatusServer::saveServoConfiguration() {
           fail(400, "PCA9685 address/channel is already assigned to another servo"); return;
         }
       }
-    } else if (String(type) != "U Bracket Short" && String(type) != "U Bracket Long" && String(type) != "Null") {
+    } else if (!supportedComponentType(type)) {
       fail(400, "Unknown component type"); return;
     }
     String parent = entry["parent"] | "";
@@ -600,7 +712,7 @@ void WebStatusServer::saveServoConfiguration() {
       if (!found) { fail(400, "Parent component not found"); return; }
     }
   }
-  if (servoCount < 1 || servoCount > kMaximumServoCount) { fail(400, "Expected 1-20 servos"); return; }
+  if (servoCount > kMaximumServoCount) { fail(400, "Expected 0-20 servos"); return; }
   for (const char* field : {"position", "rotation"}) {
     for (const char* axis : {"x", "y", "z"}) {
       const JsonVariantConst value = target[field][axis];
@@ -609,7 +721,7 @@ void WebStatusServer::saveServoConfiguration() {
   }
   const String model = target["model"] | "standard";
   const String mode = target["initialMotionMode"] | "immediate";
-  if ((model != "standard" && model != "micro") || (mode != "smooth" && mode != "immediate") ||
+  if (!supportedComponentModel("Servo", model) || (mode != "smooth" && mode != "immediate" && mode != "linear") ||
       !target["enabled"].is<bool>() || !target["reversed"].is<bool>() ||
       (!target["continuous"].isNull() && !target["continuous"].is<bool>()) ||
       !target["minAngle"].is<int>() || !target["maxAngle"].is<double>() ||
@@ -620,11 +732,11 @@ void WebStatusServer::saveServoConfiguration() {
   if (!request["camera"].isUnbound()) config["camera"].set(request["camera"]);
   const size_t expected = measureJson(config);
   if (expected > 24576) { fail(413, "Config too large"); return; }
-  File output = LittleFS.open("/config.json.tmp", "w");
+  File output = LittleFS.open(RobotStorage::path("config.json.tmp", robot), "w");
   if (!output) { fail(500, "Could not open config storage"); return; }
   const size_t written = serializeJson(config, output); output.close();
-  if (written != expected || !LittleFS.rename("/config.json.tmp", "/config.json")) {
-    LittleFS.remove("/config.json.tmp"); fail(500, "Could not save config"); return;
+  if (written != expected || !LittleFS.rename(RobotStorage::path("config.json.tmp", robot), RobotStorage::path("config.json", robot))) {
+    LittleFS.remove(RobotStorage::path("config.json.tmp", robot)); fail(500, "Could not save config"); return;
   }
   server_.send(200, "text/plain; charset=utf-8", "Config saved; restart controller to apply");
 }
@@ -654,23 +766,27 @@ void WebStatusServer::savePreviewConfiguration() {
     server_.send(400, "text/plain; charset=utf-8", "Expected placements for 1-60 components");
     return;
   }
-  File source = LittleFS.open("/config.json", "r");
-  if (!source || source.size() > kMaximumConfigBytes) {
-    if (source) source.close();
-    server_.send(500, "text/plain; charset=utf-8", "Could not read config storage");
-    return;
-  }
+  const String robot = patch["robot"].is<const char*>() ? patch["robot"].as<String>() : RobotStorage::active();
+  if (robot.length() && !RobotStorage::validName(robot)) { server_.send(400, "text/plain", "Invalid robot name"); return; }
+  const String configPath = RobotStorage::path("config.json", robot);
+  const bool exists = LittleFS.exists(configPath);
+  const bool creating = !exists && patch["originalNames"].isNull();
   JsonDocument config;
-  const DeserializationError error = deserializeJson(config, source);
-  source.close();
-  JsonArray entries = config["components"].as<JsonArray>();
-  if (error || entries.isNull()) {
-    server_.send(409, "text/plain; charset=utf-8", "Config changed; reload the page");
-    return;
+  if (creating) {
+    if (!patch["configuration"].is<JsonObjectConst>()) { server_.send(400, "text/plain", "Missing robot config"); return; }
+    config.set(patch["configuration"]);
+    config["components"].to<JsonArray>();
+  } else {
+    File source = LittleFS.open(configPath, "r");
+    if (!source || source.size() > kMaximumConfigBytes || deserializeJson(config, source)) {
+      server_.send(409, "text/plain", "Could not read robot config"); return;
+    }
+    source.close();
   }
+  JsonArray entries = config["components"].as<JsonArray>();
   auto fail = [this](int code, const char* message) { server_.send(code, "text/plain; charset=utf-8", message); };
   const JsonArrayConst originalNames = patch["originalNames"].as<JsonArrayConst>();
-  if (originalNames.isNull() || originalNames.size() != entries.size()) {
+  if (entries.isNull() || (!creating && (originalNames.isNull() || originalNames.size() != entries.size()))) {
     fail(409, "Config changed; reload the page"); return;
   }
   for (size_t index = 0; index < entries.size(); ++index) {
@@ -701,34 +817,34 @@ void WebStatusServer::savePreviewConfiguration() {
   }
   config["components"].set(newEntries);
   entries = config["components"].as<JsonArray>();
-  // Existing hardware fields stay intact. New servos start disabled.
+  // Save the servo settings included in the robot snapshot as well as placement.
 
   for (size_t index = 0; index < updates.size(); ++index) {
     const JsonObjectConst update = updates[index].as<JsonObjectConst>();
     const char* name = update["name"] | "";
     if (entries[index]["name"].isNull()) {
       const String type = update["objectType"] | "";
-      if (type != "Servo" && type != "U Bracket Short" && type != "U Bracket Long" && type != "Null") {
+      if (!supportedComponentType(type)) {
         fail(400, "Unknown component type"); return;
       }
       JsonObject added = entries[index].as<JsonObject>();
       added.set(update);
       added.remove("originalName");
       if (type == "Servo") {
-        added["enabled"] = false;
         const String model = added["model"] | "";
-        if ((model != "standard" && model != "micro") ||
+        if (!supportedComponentModel("Servo", model) ||
             !added["minAngle"].is<int>() || added["minAngle"].as<int>() < 0 ||
             !added["maxAngle"].is<int>() || added["maxAngle"].as<int>() > 180 ||
             added["minAngle"].as<int>() > added["maxAngle"].as<int>() ||
-            String(added["initialMotionMode"] | "") != "immediate" ||
+            (String(added["initialMotionMode"] | "") != "immediate" && String(added["initialMotionMode"] | "") != "smooth" && String(added["initialMotionMode"] | "") != "linear") ||
             !added["reversed"].is<bool>() || !added["continuous"].is<bool>()) {
           fail(400, "Invalid new servo settings"); return;
         }
       }
     }
-    if (!name[0] || strlen(name) > 31) {
-      fail(400, "Component name must contain 1-31 bytes"); return;
+    const size_t maximumNameBytes = String(entries[index]["objectType"] | "Servo") == "Servo" ? 31 : 63;
+    if (!name[0] || strlen(name) > maximumNameBytes) {
+      fail(400, "Component name exceeds its byte limit (31 for servos, 63 for other components)"); return;
     }
     if (!update["constraints"].isUnbound()) {
       if (String(entries[index]["objectType"] | "Servo") != "Null" || !validNullConstraints(update["constraints"])) {
@@ -746,6 +862,34 @@ void WebStatusServer::savePreviewConfiguration() {
       }
       entries[index]["rotationConstraints"].set(update["rotationConstraints"]);
     }
+    if (String(entries[index]["objectType"] | "Servo") == "Servo") {
+      for (const char* key : {"type", "address", "channel", "startupAngle", "minPulseMicroseconds", "maxPulseMicroseconds",
+                             "minAngle", "maxAngle", "initialMotionMode", "enabled", "reversed", "continuous", "model"}) {
+        if (!update[key].isUnbound()) entries[index][key].set(update[key]);
+      }
+      JsonObjectConst servo = entries[index];
+      const String model = servo["model"] | "standard";
+      const String motion = servo["initialMotionMode"] | "immediate";
+      if (!supportedComponentModel("Servo", model) || (motion != "immediate" && motion != "smooth" && motion != "linear") ||
+          !servo["enabled"].is<bool>() || !servo["reversed"].is<bool>() || !servo["continuous"].is<bool>() ||
+          !servo["minAngle"].is<int>() || servo["minAngle"].as<int>() < 0 ||
+          !servo["maxAngle"].is<int>() || servo["maxAngle"].as<int>() > 180 ||
+          servo["minAngle"].as<int>() > servo["maxAngle"].as<int>()) {
+        fail(400, "Invalid servo settings"); return;
+      }
+    }
+    for (const char* key : {"minPowerWatts", "maxPowerWatts", "powerVoltageVolts", "idleCurrentAmps", "runningCurrentAmps", "peakCurrentAmps"}) {
+      if (!update[key].isUnbound()) entries[index][key].set(update[key]);
+    }
+    if (!updateComponentNumericSettings(entries[index].as<JsonObject>(), update)) { fail(400, "Invalid component numeric settings"); return; }
+    if (!validPowerRange(entries[index])) { fail(400, "Invalid power range in watts"); return; }
+    const JsonVariantConst mass = update["massGrams"];
+    if (!mass.isUnbound() && !mass.isNull()) {
+      if (!mass.is<double>() || !isfinite(mass.as<double>()) || mass.as<double>() <= 0) {
+        fail(400, "Mass must be a positive number in grams"); return;
+      }
+      entries[index]["massGrams"] = mass.as<double>();
+    } else entries[index].remove("massGrams");
     entries[index]["name"] = name;
     if (!update["parent"].isUnbound()) {
       if (!update["parent"].isNull() && !update["parent"].is<const char*>()) {
@@ -794,7 +938,7 @@ void WebStatusServer::savePreviewConfiguration() {
           fail(400, "PCA9685 address/channel is already assigned to another servo"); return;
         }
       }
-    } else if (String(type) != "U Bracket Short" && String(type) != "U Bracket Long" && String(type) != "Null") {
+    } else if (!supportedComponentType(type)) {
       fail(400, "Unknown component type"); return;
     }
     String parent = entry["parent"] | "";
@@ -807,28 +951,104 @@ void WebStatusServer::savePreviewConfiguration() {
       if (!found) { fail(400, "Parent component not found"); return; }
     }
   }
-  if (servoCount < 1 || servoCount > kMaximumServoCount) { fail(400, "Expected 1-20 servos"); return; }
+  if (servoCount > kMaximumServoCount) { fail(400, "Expected 0-20 servos"); return; }
   const size_t expected = measureJson(config);
   if (expected > kMaximumConfigBytes) {
     server_.send(413, "text/plain; charset=utf-8", "Updated config too large");
     return;
   }
-  File target = LittleFS.open("/config.json.tmp", "w");
+  if (robot.length()) {
+    const String directory = String("/robots/") + robot;
+    if ((!LittleFS.exists("/robots") && !LittleFS.mkdir("/robots")) ||
+        (!LittleFS.exists(directory) && !LittleFS.mkdir(directory))) {
+      fail(500, "Could not create robot folder; check filesystem free space"); return;
+    }
+  }
+  File target = LittleFS.open(configPath + ".tmp", "w");
   if (!target) {
     server_.send(500, "text/plain; charset=utf-8", "Could not open config storage");
     return;
   }
   const size_t written = serializeJson(config, target);
   target.close();
-  if (written != expected || !LittleFS.rename("/config.json.tmp", "/config.json")) {
-    LittleFS.remove("/config.json.tmp");
+  if (written != expected || !LittleFS.rename(configPath + ".tmp", configPath)) {
+    LittleFS.remove(configPath + ".tmp");
     server_.send(500, "text/plain; charset=utf-8", "Could not save config");
     return;
   }
-  server_.send(200, "text/plain; charset=utf-8", "Config saved");
+  if (robot.length() && !RobotStorage::select(robot)) { fail(500, "Config saved but robot selection failed"); return; }
+  if (robot.length() && RobotStorage::active() != robot) {
+    fail(500, "Config saved but active robot was not persisted"); return;
+  }
+  if (runtimeRobot_ != RobotStorage::active()) {
+    for (uint8_t i = 0; i < servoCount_; ++i) servos_[i].setOutputEnabled(false);
+  }
+  server_.send(200, "text/plain; charset=utf-8", "Robot saved");
+}
+
+void WebStatusServer::setServoBatch() {
+  auto fail = [this](int code, const char* message) { server_.send(code, "text/plain", message); };
+  if (rebootPending_ || runtimeRobot_ != RobotStorage::active()) {
+    fail(409, "Controller requires restart before servo commands"); return;
+  }
+  if (server_.arg("plain").length() > 8192) { fail(413, "Batch too large"); return; }
+  JsonDocument document;
+  if (deserializeJson(document, server_.arg("plain"))) { fail(400, "Invalid batch JSON"); return; }
+  const JsonArrayConst commands = document["commands"].as<JsonArrayConst>();
+  if (commands.isNull() || commands.size() == 0 || commands.size() > servoCount_) { fail(400, "Invalid servo batch size"); return; }
+  struct Command {
+    uint8_t channel;
+    bool hasAngle, enabled, smooth, linear;
+    uint8_t angle;
+    ServoMotionSpeed speed;
+    float rate;
+    uint32_t duration;
+  };
+  Command prepared[kMaximumServoCount];
+  bool seen[kMaximumServoCount] = {};
+  size_t count = 0;
+  // Validate the entire step before starting any output.
+  for (JsonObjectConst entry : commands) {
+    if (!entry["channel"].is<int>() || entry["channel"].as<int>() < 1 || entry["channel"].as<int>() > servoCount_ || !entry["enabled"].is<bool>()) {
+      fail(400, "Invalid servo batch channel or enabled state"); return;
+    }
+    const uint8_t index = entry["channel"].as<int>() - 1;
+    if (seen[index]) { fail(400, "Duplicate batch channel"); return; }
+    if (!servos_[index].isReady()) { fail(503, "Servo channel unavailable"); return; }
+    seen[index] = true;
+    const bool hasAngle = !entry["angle"].isUnbound();
+    if (hasAngle && (!entry["angle"].is<int>() || entry["angle"].as<int>() < 0 || entry["angle"].as<int>() > 180)) {
+      fail(400, "Invalid batch angle"); return;
+    }
+    const String mode = entry["motionMode"] | "immediate";
+    const String speed = entry["speed"] | "M";
+    if ((mode != "immediate" && mode != "smooth" && mode != "linear") || (speed != "L" && speed != "M" && speed != "H") ||
+        !entry["playbackRate"].is<float>() || !isfinite(entry["playbackRate"].as<float>()) || entry["playbackRate"].as<float>() < 0.001f || entry["playbackRate"].as<float>() > 10.0f) {
+      fail(400, "Invalid batch motion mode, speed or playback rate"); return;
+    }
+    if (!entry["durationMs"].isUnbound() && (mode != "linear" || !entry["durationMs"].is<uint32_t>() ||
+        entry["durationMs"].as<uint32_t>() < kMinimumStepDurationMilliseconds || entry["durationMs"].as<uint32_t>() > kMaximumStepDurationMilliseconds)) {
+      fail(400, "Invalid linear step duration"); return;
+    }
+    prepared[count++] = { index, hasAngle, entry["enabled"].as<bool>(), mode == "smooth", mode == "linear",
+      static_cast<uint8_t>(entry["angle"] | 0), speed == "L" ? ServoMotionSpeed::Low : speed == "M" ? ServoMotionSpeed::Medium : ServoMotionSpeed::High,
+      entry["playbackRate"].as<float>(), entry["durationMs"] | static_cast<uint32_t>(0) };
+  }
+  for (size_t i = 0; i < count; ++i) {
+    const Command& command = prepared[i];
+    Pca9685ServoTest& servo = servos_[command.channel];
+    if (!servo.setEnabled(command.enabled) || (command.hasAngle && command.enabled && servo.isOutputEnabled() &&
+        !servo.setTargetAngle(command.angle, command.smooth, command.speed, command.rate, command.linear, command.duration))) {
+      // If hardware fails part-way through a batch, stop all participating outputs.
+      for (size_t j = 0; j < count; ++j) servos_[prepared[j].channel].setOutputEnabled(false);
+      fail(500, "PCA9685 rejected batch; participating outputs switched off"); return;
+    }
+  }
+  server_.send(200, "text/plain", "Servo step started");
 }
 
 void WebStatusServer::setServoAngle() {
+  if (runtimeRobot_ != RobotStorage::active()) { server_.send(409, "text/plain", "Robot changed; restart the controller before commanding servos"); return; }
   if (rebootPending_) {
     server_.send(503, "text/plain; charset=utf-8", "Controller is rebooting");
     return;
@@ -929,6 +1149,16 @@ void WebStatusServer::setServoAngle() {
     smooth = smoothValue == "1";
   }
 
+  bool linear = false;
+  if (server_.hasArg("motionMode")) {
+    const String mode = server_.arg("motionMode");
+    if (mode != "immediate" && mode != "smooth" && mode != "linear") {
+      server_.send(400, "text/plain", "Motion mode must be immediate, smooth or linear"); return;
+    }
+    smooth = mode == "smooth";
+    linear = mode == "linear";
+  }
+
   float playbackRate = 1.0f;
   if (server_.hasArg("playbackRate")) {
     const String value = server_.arg("playbackRate");
@@ -960,7 +1190,7 @@ void WebStatusServer::setServoAngle() {
       (hasEnabled && !servo->setEnabled(enabled)) ||
       (hasAngle &&
        !servo->setTargetAngle(static_cast<uint8_t>(angle), smooth, speed,
-                             playbackRate))) {
+                             playbackRate, linear))) {
     server_.send(500, "text/plain; charset=utf-8",
                  "PCA9685 rejected the servo command");
     return;
@@ -1025,7 +1255,18 @@ void WebStatusServer::sendStatus() {
   json += String(connected ? WiFi.RSSI() : 0);
   json += F(",\"mac\":");
   appendJsonString(json, mac);
-  json += F("},\"servos\":[");
+  json += F("},\"led\":{\"rgb\":[");
+  json += String(boardRgbLed.red()); json += ',';
+  json += String(boardRgbLed.green()); json += ',';
+  json += String(boardRgbLed.blue());
+  json += F("]},\"sensors\":");
+  JsonDocument sensors;
+  distanceSensor.appendStatus(sensors["vl53l0x"].to<JsonObject>());
+  // ArduinoJson 7 clears String destinations; preserve the status prefix.
+  String sensorJson;
+  serializeJson(sensors, sensorJson);
+  json += sensorJson;
+  json += F(",\"servos\":[");
   for (uint8_t index = 0; index < servoCount_; ++index) {
     Pca9685ServoTest* servo = &servos_[index];
     if (index > 0) {
@@ -1043,6 +1284,10 @@ void WebStatusServer::sendStatus() {
     json += servo->isReady() ? F("true") : F("false");
     json += F(",\"continuous\":");
     json += configurations_[index].continuous ? F("true") : F("false");
+    json += F(",\"minAngle\":");
+    json += String(configurations_[index].minimumAngle);
+    json += F(",\"maxAngle\":");
+    json += String(configurations_[index].maximumAngle);
     json += F(",\"angleDegrees\":");
     json += String(servo->angle());
     json += F(",\"pulseMicroseconds\":");

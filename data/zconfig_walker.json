@@ -1,0 +1,433 @@
+{
+  "servoController": {
+    "id": 1,
+    "name": "PCA9685",
+    "description": "16 Channel Servo Controller",
+    "address": "0x41",
+    "frequency": 50,
+    "shopProductId": "PCA9685"
+  },
+  "modes": [
+    {
+      "name": "immediate",
+      "label": "-",
+      "description": "Moves the servo to the target position immediately."
+    },
+    {
+      "name": "linear",
+      "label": "/",
+      "description": "Moves the servo to the target position at a constant speed.",
+      "speeds": [
+        {
+          "name": "slow",
+          "label": "S",
+          "description": "Moves the servo to the target position at a slow speed."
+        },
+        {
+          "name": "medium",
+          "label": "M",
+          "description": "Moves the servo to the target position at a medium speed."
+        },
+        {
+          "name": "fast",
+          "label": "F",
+          "description": "Moves the servo to the target position at a fast speed."
+        }
+      ]
+    },
+    {
+      "name": "ease-in-out",
+      "label": "~",
+      "description": "Moves the servo to the target position with an ease-in-out motion profile.",
+      "speeds": [
+        {
+          "name": "slow",
+          "label": "S",
+          "description": "Moves the servo to the target position at a slow speed."
+        },
+        {
+          "name": "medium",
+          "label": "M",
+          "description": "Moves the servo to the target position at a medium speed."
+        },
+        {
+          "name": "fast",
+          "label": "F",
+          "description": "Moves the servo to the target position at a fast speed."
+        }
+      ]
+    }
+  ],
+  "components": [
+    {
+      "name": "Walker",
+      "objectType": "Null",
+      "parent": null,
+      "position": {
+        "x": 0,
+        "y": 175,
+        "z": 0
+      },
+      "rotation": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "constraints": {
+        "y": {
+          "enabled": true,
+          "min": 0,
+          "max": 60
+        },
+        "x": {
+          "enabled": true,
+          "min": 0,
+          "max": 0
+        }
+      },
+      "shopProductId": null
+    },
+    {
+      "name": "U Bracket Long 1",
+      "objectType": "U Bracket Long",
+      "parent": "Servo 1",
+      "position": {
+        "x": 0,
+        "y": 7,
+        "z": 0
+      },
+      "rotation": {
+        "x": 0,
+        "y": -180,
+        "z": 0
+      },
+      "shopProductId": "long-u-bracket"
+    },
+    {
+      "name": "Servo 1",
+      "position": {
+        "x": 30,
+        "y": -1,
+        "z": 0
+      },
+      "rotation": {
+        "x": 0,
+        "y": 180,
+        "z": 0
+      },
+      "model": "standard",
+      "parent": "U Bracket Short 1",
+      "enabled": true,
+      "initialMotionMode": "immediate",
+      "startupAngle": 90,
+      "address": "0x41",
+      "channel": 0,
+      "minPulseMicroseconds": 500,
+      "maxPulseMicroseconds": 2500,
+      "type": "TD-7120",
+      "minAngle": 0,
+      "maxAngle": 180,
+      "reversed": false,
+      "objectType": "Servo",
+      "continuous": false,
+      "shopProductId": null
+    },
+    {
+      "name": "Servo 2",
+      "position": {
+        "x": 35,
+        "y": -1,
+        "z": 0
+      },
+      "rotation": {
+        "x": 0,
+        "y": 180,
+        "z": 0
+      },
+      "model": "standard",
+      "parent": "U Bracket Short 2",
+      "enabled": true,
+      "initialMotionMode": "immediate",
+      "startupAngle": 120,
+      "address": "0x41",
+      "channel": 1,
+      "minPulseMicroseconds": 500,
+      "maxPulseMicroseconds": 2500,
+      "type": "TD-7120",
+      "minAngle": 0,
+      "maxAngle": 270,
+      "reversed": false,
+      "objectType": "Servo",
+      "continuous": false,
+      "shopProductId": null
+    },
+    {
+      "name": "Servo 3",
+      "position": {
+        "x": 30,
+        "y": -1,
+        "z": 0
+      },
+      "rotation": {
+        "x": 0,
+        "y": 180,
+        "z": 0
+      },
+      "model": "standard",
+      "parent": "U Bracket Short 3",
+      "enabled": true,
+      "initialMotionMode": "immediate",
+      "startupAngle": 90,
+      "address": "0x41",
+      "channel": 2,
+      "minPulseMicroseconds": 500,
+      "maxPulseMicroseconds": 2500,
+      "type": "TD-7120",
+      "minAngle": 0,
+      "maxAngle": 180,
+      "reversed": false,
+      "objectType": "Servo",
+      "continuous": false,
+      "shopProductId": null
+    },
+    {
+      "name": "Servo 4",
+      "position": {
+        "x": 35,
+        "y": -1,
+        "z": 0
+      },
+      "rotation": {
+        "x": 0,
+        "y": 180,
+        "z": 0
+      },
+      "model": "standard",
+      "parent": "U Bracket Short 4",
+      "enabled": true,
+      "initialMotionMode": "immediate",
+      "startupAngle": 90,
+      "address": "0x41",
+      "channel": 3,
+      "minPulseMicroseconds": 500,
+      "maxPulseMicroseconds": 2500,
+      "type": "TD-7120",
+      "minAngle": 0,
+      "maxAngle": 180,
+      "reversed": false,
+      "objectType": "Servo",
+      "continuous": false,
+      "shopProductId": null
+    },
+    {
+      "name": "Servo 5",
+      "position": {
+        "x": -55,
+        "y": 45,
+        "z": 0
+      },
+      "rotation": {
+        "x": 0,
+        "y": 180,
+        "z": 90
+      },
+      "model": "micro",
+      "parent": "Walker",
+      "enabled": false,
+      "initialMotionMode": "immediate",
+      "startupAngle": 90,
+      "address": "0x41",
+      "channel": 4,
+      "minPulseMicroseconds": 500,
+      "maxPulseMicroseconds": 2500,
+      "type": "MicroServo 9g Rotary",
+      "minAngle": 0,
+      "maxAngle": 360,
+      "reversed": false,
+      "objectType": "Servo",
+      "continuous": false,
+      "shopProductId": null
+    },
+    {
+      "name": "Servo 6",
+      "position": {
+        "x": 55,
+        "y": 45,
+        "z": 0
+      },
+      "rotation": {
+        "x": 0,
+        "y": 0,
+        "z": -90
+      },
+      "model": "micro",
+      "parent": "Walker",
+      "enabled": true,
+      "initialMotionMode": "immediate",
+      "startupAngle": 90,
+      "address": "0x41",
+      "channel": 5,
+      "minPulseMicroseconds": 500,
+      "maxPulseMicroseconds": 2500,
+      "type": "MicroServo 9g",
+      "minAngle": 0,
+      "maxAngle": 180,
+      "reversed": false,
+      "objectType": "Servo",
+      "continuous": false,
+      "shopProductId": "servo-sg90"
+    },
+    {
+      "name": "U Bracket Short 1",
+      "objectType": "U Bracket Short",
+      "parent": "Walker",
+      "position": {
+        "x": -15,
+        "y": -35,
+        "z": 0
+      },
+      "rotation": {
+        "x": 0,
+        "y": 0,
+        "z": -90
+      },
+      "shopProductId": null
+    },
+    {
+      "name": "U Bracket Short 2",
+      "objectType": "U Bracket Short",
+      "parent": "U Bracket Long 1",
+      "position": {
+        "x": 65,
+        "y": -5,
+        "z": 0
+      },
+      "rotation": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "shopProductId": null
+    },
+    {
+      "name": "U Bracket Long 2",
+      "objectType": "U Bracket Long",
+      "parent": "Servo 2",
+      "position": {
+        "x": 0,
+        "y": 7,
+        "z": 0
+      },
+      "rotation": {
+        "x": 0,
+        "y": 180,
+        "z": 0
+      },
+      "shopProductId": "long-u-bracket"
+    },
+    {
+      "name": "U Bracket Short 3",
+      "objectType": "U Bracket Short",
+      "parent": "Walker",
+      "position": {
+        "x": 55,
+        "y": -35,
+        "z": 0
+      },
+      "rotation": {
+        "x": 0,
+        "y": 0,
+        "z": -90
+      },
+      "shopProductId": null
+    },
+    {
+      "name": "U Bracket Long 3",
+      "objectType": "U Bracket Long",
+      "parent": "Servo 3",
+      "position": {
+        "x": 0,
+        "y": 7,
+        "z": 0
+      },
+      "rotation": {
+        "x": 0,
+        "y": 180,
+        "z": 0
+      },
+      "shopProductId": "long-u-bracket"
+    },
+    {
+      "name": "U Bracket Short 4",
+      "objectType": "U Bracket Short",
+      "parent": "U Bracket Long 3",
+      "position": {
+        "x": 65,
+        "y": -5,
+        "z": 0
+      },
+      "rotation": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "shopProductId": null
+    },
+    {
+      "name": "U Bracket Long 4",
+      "objectType": "U Bracket Long",
+      "parent": "Servo 4",
+      "position": {
+        "x": 0,
+        "y": 7,
+        "z": 0
+      },
+      "rotation": {
+        "x": 0,
+        "y": 180,
+        "z": 0
+      },
+      "shopProductId": "long-u-bracket"
+    }
+  ],
+  "camera": {
+    "yaw": 1.1958699329707347,
+    "pitch": 0.20000000000000018,
+    "roll": 0,
+    "zoom": 1.1655633209342564,
+    "panX": 69.39875348132232,
+    "panY": 94.02797849387744,
+    "panZ": -7.707292993143508,
+    "perspective": true,
+    "showGrid": false,
+    "views": {
+      "u1": {
+        "yaw": 1.4967228404667712,
+        "pitch": 0.02962890625000006,
+        "roll": 0,
+        "zoom": 1.4556124579492953,
+        "panX": -3.7983645686298826,
+        "panY": 113.09928097974048,
+        "panZ": 108.54935009450459,
+        "perspective": true
+      },
+      "u2": {
+        "yaw": 2.2823336203866678,
+        "pitch": 0.28148101806640624,
+        "roll": 0,
+        "zoom": 1.1655633209342564,
+        "panX": -4.299665020223282,
+        "panY": 113.43800738959422,
+        "panZ": 101.79412252066243,
+        "perspective": true
+      }
+    },
+    "webcam": {
+      "active": false,
+      "deviceId": "c8d78d74d13f84b7ded8713da9ca1fa10358354daa2672cfcab44e699dfc2857",
+      "fit": "cover",
+      "mirror": false,
+      "controls": {}
+    }
+  }
+}

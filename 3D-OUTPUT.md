@@ -128,8 +128,8 @@ unavailable, camera controls still work for the current page.
 
 ## Component model files
 
-Geometry lives in data/3dmodels/TD-7120.js, data/3dmodels/micro9g.js, data/3dmodels/UBracketShort.js and
-data/3dmodels/UBracketLong.js. Each model receives local box/cylinder drawing functions,
+Geometry lives in data/components/TD-7120.js, data/components/micro9g.js, data/components/UBracketShort.js and
+data/components/UBracketLong.js. Each model receives local box/cylinder drawing functions,
 a label callback and the servo status colour. The shared camera, transforms,
 parenting, editing and renderer stay in app.js. The HTML loads these scripts
 before app.js, and the firmware serves each model from LittleFS.

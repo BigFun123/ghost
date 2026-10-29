@@ -20,17 +20,20 @@ bool Pca9685ServoTest::begin(uint8_t address,
                              uint8_t channel,
                              uint16_t minimumPulseMicroseconds,
                              uint16_t maximumPulseMicroseconds,
-                             uint8_t initialAngle) {
+                             uint8_t initialAngle, uint8_t minimumAngle, uint8_t maximumAngle) {
   initialized_ = false;
   motionRunning_ = false;
   if (channel > 15 || minimumPulseMicroseconds < 500 ||
       maximumPulseMicroseconds > 2500 ||
       minimumPulseMicroseconds >= maximumPulseMicroseconds ||
-      initialAngle > 180) {
+      initialAngle > 180 || minimumAngle > maximumAngle || maximumAngle > 180) {
     AppLog::printf("Invalid PCA9685 servo configuration (channel %u).\n",
                    channel);
     return false;
   }
+  minimumAngle_ = minimumAngle;
+  maximumAngle_ = maximumAngle;
+  initialAngle = constrain(initialAngle, minimumAngle_, maximumAngle_);
   address_ = address;
   channel_ = channel;
   minimumPulseMicroseconds_ = minimumPulseMicroseconds;
@@ -75,6 +78,7 @@ bool Pca9685ServoTest::begin(uint8_t address,
 }
 
 bool Pca9685ServoTest::setAngle(uint8_t angle) {
+  angle = constrain(angle, minimumAngle_, maximumAngle_);
   if (!initialized_ || angle > 180) {
     return false;
   }
@@ -91,14 +95,16 @@ bool Pca9685ServoTest::setAngle(uint8_t angle) {
 bool Pca9685ServoTest::setTargetAngle(uint8_t angle,
                                       bool smooth,
                                       ServoMotionSpeed speed,
-                                      float playbackRate) {
-  if (!smooth) {
+                                      float playbackRate, bool linear, uint32_t durationMilliseconds) {
+  angle = constrain(angle, minimumAngle_, maximumAngle_);
+  if (!smooth && !linear) {
     return setAngle(angle);
   }
   if (!initialized_ || angle > 180) {
     return false;
   }
 
+  motionSmooth_ = smooth && !linear;
   motionStartPosition_ = motionPosition_;
   motionTargetAngle_ = angle;
   motionStartedAt_ = millis();
@@ -118,17 +124,21 @@ bool Pca9685ServoTest::setTargetAngle(uint8_t angle,
       break;
   }
   const float motionDuration = distance * kFullRangeMotionMilliseconds *
-      speedMultiplier * kSmoothstepPeakSpeedMultiplier / (180.0f * playbackRate);
+      speedMultiplier * (motionSmooth_ ? kSmoothstepPeakSpeedMultiplier : 1.0f) / (180.0f * playbackRate);
   motionDurationMilliseconds_ = static_cast<uint32_t>(motionDuration + 0.999f);
   if (motionDurationMilliseconds_ < kMinimumMotionMilliseconds) {
     motionDurationMilliseconds_ = kMinimumMotionMilliseconds;
+  }
+  if (linear && durationMilliseconds > 0) {
+    motionDurationMilliseconds_ = static_cast<uint32_t>(durationMilliseconds / playbackRate + 0.999f);
+    if (motionDurationMilliseconds_ < 1) motionDurationMilliseconds_ = 1;
   }
   motionRunning_ = distance > 0.0f;
   if (!motionRunning_) {
     motionPosition_ = targetPosition;
   }
-  AppLog::printf("Servo channel %u moving smoothly to %u degrees at %s speed.\n",
-                 channel_ + 1, angle,
+  AppLog::printf("Servo channel %u moving %s to %u degrees at %s speed.\n",
+                 channel_ + 1, motionSmooth_ ? "smoothly" : "linearly", angle,
                  speed == ServoMotionSpeed::Low ? "low" :
                  speed == ServoMotionSpeed::Medium ? "medium" : "high");
   return true;
@@ -143,7 +153,7 @@ bool Pca9685ServoTest::updateMotion() {
   const float progress = elapsed >= motionDurationMilliseconds_
       ? 1.0f
       : static_cast<float>(elapsed) / motionDurationMilliseconds_;
-  const float easedProgress = progress * progress * (3.0f - 2.0f * progress);
+  const float easedProgress = motionSmooth_ ? progress * progress * (3.0f - 2.0f * progress) : progress;
   const float position = motionStartPosition_ +
       (static_cast<float>(motionTargetAngle_) - motionStartPosition_) *
           easedProgress;
@@ -165,6 +175,7 @@ bool Pca9685ServoTest::updateMotion() {
 }
 
 bool Pca9685ServoTest::writeAngle(uint8_t angle, bool logCommand) {
+  angle = constrain(angle, minimumAngle_, maximumAngle_);
   const uint16_t pulseMicroseconds = static_cast<uint16_t>(
       minimumPulseMicroseconds_ +
       (static_cast<uint32_t>(angle) *

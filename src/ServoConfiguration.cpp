@@ -1,6 +1,8 @@
 #include "ServoConfiguration.h"
 
 #include "AppLog.h"
+#include "RobotStorage.h"
+#include "ComponentCatalog.h"
 
 #include <ArduinoJson.h>
 #include <LittleFS.h>
@@ -36,7 +38,7 @@ bool loadServoConfigurations(ServoConfiguration* configurations,
                              uint8_t capacity,
                              uint8_t& configurationCount) {
   configurationCount = 0;
-  File file = LittleFS.open("/config.json", "r");
+  File file = LittleFS.open(RobotStorage::path("config.json"), "r");
   if (!file) {
     AppLog::println("Servo configuration missing: /config.json.");
     return false;
@@ -59,7 +61,7 @@ bool loadServoConfigurations(ServoConfiguration* configurations,
 
   for (JsonObjectConst entry : servos) {
     const char* objectType = entry["objectType"] | "Servo";
-    if (strcmp(objectType, "U Bracket Short") == 0 || strcmp(objectType, "U Bracket Long") == 0 || strcmp(objectType, "Null") == 0) continue;
+    if (strcmp(objectType, "Servo") != 0 && supportedComponentType(objectType)) continue;
     if (strcmp(objectType, "Servo") != 0 || configurationCount >= capacity || configurationCount >= kMaximumServoCount) {
       AppLog::println("Invalid component type or too many servo components.");
       configurationCount = 0;
@@ -91,6 +93,20 @@ bool loadServoConfigurations(ServoConfiguration* configurations,
       return false;
     }
     candidate.continuous = entry["continuous"] | false;
+    if (!candidate.continuous) {
+      const double minimumAngle = entry["minAngle"] | 0.0;
+      const double maximumAngle = entry["maxAngle"] | 180.0;
+      if ((!entry["minAngle"].isNull() && !entry["minAngle"].is<double>()) ||
+          (!entry["maxAngle"].isNull() && !entry["maxAngle"].is<double>()) ||
+          !isfinite(minimumAngle) || !isfinite(maximumAngle) || minimumAngle < 0 || minimumAngle > 180 ||
+          minimumAngle > maximumAngle || ceil(minimumAngle) > floor(maximumAngle)) {
+        AppLog::println("Invalid servo angle limits.");
+        configurationCount = 0;
+        return false;
+      }
+      candidate.minimumAngle = static_cast<uint8_t>(ceil(minimumAngle));
+      candidate.maximumAngle = static_cast<uint8_t>(min(180.0, floor(maximumAngle)));
+    }
     candidate.name = name;
     candidate.channel = static_cast<uint8_t>(channel);
     candidate.startupAngle = static_cast<uint8_t>(startupAngle);
@@ -107,7 +123,6 @@ bool loadServoConfigurations(ServoConfiguration* configurations,
     configurations[configurationCount++] = candidate;
   }
 
-  if (configurationCount == 0) return false;
   AppLog::printf("Loaded %u servo configuration(s).\n", configurationCount);
   return true;
 }

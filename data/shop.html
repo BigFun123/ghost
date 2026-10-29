@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Robot parts shop — Ghost</title>
+  <link rel="stylesheet" href="./style.css">
+  <script src="./shop.js" defer></script>
+</head>
+<body style="display:block;max-width:960px;padding:20px;margin:auto">
+  <nav><a href="./">Back to controller</a> · <a href="https://epistemic.co.za/shop/" target="_blank" rel="noopener noreferrer">Browse online shop</a></nav>
+  <main>
+    <h1>Robot parts shop</h1>
+    <p>Review your robot parts and enter their catalogue product IDs. Uncheck components you do not need to buy. Quantities for the same product are combined.</p>
+    <p>The online shop opens separately because its security settings prevent embedding it here.</p>
+    <form id="shopForm">
+      <label>Robot name <input id="shopRobotName" required maxlength="200"></label>
+      <button id="shopReload" type="button">Reload saved robot</button>
+      <div style="overflow:auto;margin:20px 0">
+        <table style="width:100%"><thead><tr><th>Include</th><th>Photo</th><th>Component</th><th>Catalogue product ID</th><th>Quantity</th></tr></thead><tbody id="shopParts"></tbody></table>
+      </div>
+      <p>Sending shares this robot definition and selected parts with Epistemic for 24 hours. Anyone with the resulting link can view it. This prepares a parts list; checkout happens in the shop.</p>
+      <button id="shopSend" type="submit" disabled>Prepare parts in online shop</button>
+    </form>
+    <p id="shopImagesStatus" class="subtle" role="status" aria-live="polite"></p>
+    <p id="shopStatus" role="status" aria-live="polite">Loading robot…</p>
+    <p><a id="shopResult" hidden target="_blank" rel="noopener noreferrer">Open prepared parts in online shop</a></p>
+  </main>
+</body>
+</html>

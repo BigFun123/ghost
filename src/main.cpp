@@ -6,6 +6,7 @@
 #include <LittleFS.h>
 
 #include "AppLog.h"
+#include "DistanceSensor.h"
 #include "BoardRgbLed.h"
 #include "OledDisplay.h"
 #include "Pca9685ServoTest.h"
@@ -19,6 +20,7 @@
 #define WIFI_CREDENTIALS_AVAILABLE 0
 #endif
 
+DistanceSensor distanceSensor;
 OledDisplay oledDisplay;
 BoardRgbLed boardRgbLed;
 Pca9685ServoTest servos[kMaximumServoCount];
@@ -101,7 +103,7 @@ bool initializeServo(uint8_t index, bool retry) {
                    configuration.channel,
                    configuration.minimumPulseMicroseconds,
                    configuration.maximumPulseMicroseconds,
-                   configuration.startupAngle)) {
+                   configuration.startupAngle, configuration.minimumAngle, configuration.maximumAngle)) {
     if (retry) {
       AppLog::printf("Servo channel %u is still unavailable; will retry.\n",
                      configuration.channel + 1);
@@ -240,6 +242,7 @@ void setup() {
   Wire.setClockStretchLimit(1000);
 #endif
   const bool servoBusReady = ensureI2cBusReady("servo startup");
+  if (servoBusReady) distanceSensor.begin();
   filesystemReady = LittleFS.begin();
   if (!filesystemReady) {
     AppLog::println("LittleFS mount failed; cannot load config.json.");
@@ -285,6 +288,7 @@ void setup() {
 
 void loop() {
   const unsigned long now = millis();
+  distanceSensor.update();
   if (servoConfigurationsReady &&
       now - lastServoControllerRetryAt >=
           kServoControllerRetryIntervalMilliseconds) {

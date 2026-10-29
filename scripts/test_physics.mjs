@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
+import registryLoader from '../devserver/component-registry.js';
 import '../data/physics.js';
 const source = fs.readFileSync(new URL('../data/lib/rapier.js', import.meta.url), 'utf8');
 const { default: RAPIER } = await import('data:text/javascript;base64,' + Buffer.from(source).toString('base64'));
@@ -83,7 +84,7 @@ try {
 const app = fs.readFileSync(new URL('../data/app.js', import.meta.url), 'utf8');
 const context = { servoPreview: { nodes: [{ objectType: 'Servo', model: 'standard', parent: null, angle: 90, rotation: [0, 0, 90], position: [10, 20, 30] }] } };
 vm.createContext(context);
-vm.runInContext(fs.readFileSync(new URL('../data/3dmodels/TD-7120.js', import.meta.url), 'utf8'), context);
+registryLoader.loadComponentRegistry(context);
 vm.runInContext(app.slice(app.indexOf('function rotateServoPoint('), app.indexOf('function clampPreviewPitch(')), context);
 vm.runInContext(app.slice(app.indexOf('function collectPreviewPhysicsShapes('), app.indexOf('function syncPreviewPhysics(')), context);
 const shapes = context.collectPreviewPhysicsShapes();
@@ -91,8 +92,8 @@ assert(shapes.length >= 4);
 assert.equal(shapes[0].kind, 'box');
 assert(Math.abs(shapes[0].center[0] - 30) < 0.001);
 assert(Math.abs(shapes[0].center[1] - 32) < 0.001);
-// Exercise the user's complete authored assembly, not only the synthetic hinge.
-const config = JSON.parse(fs.readFileSync(new URL('../data/config.json', import.meta.url), 'utf8'));
+// Use a fixed authored assembly so editing a saved robot cannot change this regression.
+const config = JSON.parse(fs.readFileSync(new URL('./fixtures/physics_assembly.json', import.meta.url), 'utf8'));
 context.servoPreview.nodes = config.components.map(c => ({ ...c,
   // Test assembly welding independently of saved support constraints below.
   constraints: undefined, rotationConstraints: undefined,
@@ -101,7 +102,7 @@ context.servoPreview.nodes = config.components.map(c => ({ ...c,
   rotation: ['x', 'y', 'z'].map(axis => c.rotation?.[axis] || 0),
   angle: c.startupAngle ?? 90, spinAngle: c.startupAngle ?? 90, enabled: true, outputEnabled: true
 }));
-for (const name of ['micro9g', 'UBracketShort', 'UBracketLong']) vm.runInContext(fs.readFileSync(new URL('../data/3dmodels/' + name + '.js', import.meta.url), 'utf8'), context);
+
 const assembly = globalThis.GhostPhysics.create(RAPIER);
 try {
   for (let i = 0; i < 300; i++) {

@@ -14,10 +14,10 @@ class Pca9685ServoTest {
              uint8_t channel = 0,
              uint16_t minimumPulseMicroseconds = 500,
              uint16_t maximumPulseMicroseconds = 2500,
-             uint8_t initialAngle = 0);
+             uint8_t initialAngle = 0, uint8_t minimumAngle = 0, uint8_t maximumAngle = 180);
   bool setAngle(uint8_t angle);
   bool setTargetAngle(uint8_t angle, bool smooth, ServoMotionSpeed speed,
-                      float playbackRate = 1.0f);
+                      float playbackRate = 1.0f, bool linear = false, uint32_t durationMilliseconds = 0);
   bool updateMotion();
   bool setEnabled(bool enabled);
   bool setOutputEnabled(bool enabled);
@@ -34,6 +34,8 @@ class Pca9685ServoTest {
   bool setPulseMicroseconds(uint16_t pulseMicroseconds);
   bool writeAngle(uint8_t angle, bool logCommand);
 
+  uint8_t minimumAngle_ = 0;
+  uint8_t maximumAngle_ = 180;
   uint8_t address_ = 0x40;
   uint8_t channel_ = 0;
   uint8_t angle_ = 0;
@@ -49,4 +51,5 @@ class Pca9685ServoTest {
   bool outputEnabled_ = true;
   bool initialized_ = false;
   bool motionRunning_ = false;
+  bool motionSmooth_ = true;
 };

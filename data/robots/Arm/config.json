@@ -1,0 +1,489 @@
+{
+  "servoController": {
+    "id": 1,
+    "name": "PCA9685",
+    "description": "16 Channel Servo Controller",
+    "address": "0x41",
+    "frequency": 50,
+    "shopProductId": "PCA9685"
+  },
+  "modes": [
+    {
+      "name": "immediate",
+      "label": "-",
+      "description": "Moves the servo to the target position immediately."
+    },
+    {
+      "name": "linear",
+      "label": "/",
+      "description": "Moves the servo to the target position at a constant speed.",
+      "speeds": [
+        {
+          "name": "slow",
+          "label": "S",
+          "description": "Moves the servo to the target position at a slow speed."
+        },
+        {
+          "name": "medium",
+          "label": "M",
+          "description": "Moves the servo to the target position at a medium speed."
+        },
+        {
+          "name": "fast",
+          "label": "F",
+          "description": "Moves the servo to the target position at a fast speed."
+        }
+      ]
+    },
+    {
+      "name": "ease-in-out",
+      "label": "~",
+      "description": "Moves the servo to the target position with an ease-in-out motion profile.",
+      "speeds": [
+        {
+          "name": "slow",
+          "label": "S",
+          "description": "Moves the servo to the target position at a slow speed."
+        },
+        {
+          "name": "medium",
+          "label": "M",
+          "description": "Moves the servo to the target position at a medium speed."
+        },
+        {
+          "name": "fast",
+          "label": "F",
+          "description": "Moves the servo to the target position at a fast speed."
+        }
+      ]
+    }
+  ],
+  "components": [
+    {
+      "name": "Base",
+      "objectType": "Servo",
+      "model": "standard",
+      "type": "TD-7120MG",
+      "parent": "Stepper Linear Actuator 1",
+      "position": {
+        "x": 0,
+        "y": 50,
+        "z": 0
+      },
+      "rotation": {
+        "x": 0,
+        "y": -180,
+        "z": 0
+      },
+      "address": "0x41",
+      "channel": 0,
+      "enabled": true,
+      "reversed": false,
+      "continuous": false,
+      "initialMotionMode": "immediate",
+      "startupAngle": 90,
+      "minAngle": 0,
+      "maxAngle": 180,
+      "minPulseMicroseconds": 500,
+      "maxPulseMicroseconds": 2500,
+      "minPowerWatts": null,
+      "maxPowerWatts": null,
+      "powerVoltageVolts": null,
+      "idleCurrentAmps": null,
+      "runningCurrentAmps": null,
+      "peakCurrentAmps": null,
+      "shopProductId": "TD-7120MG"
+    },
+    {
+      "name": "Robot",
+      "objectType": "Robot",
+      "parent": null,
+      "position": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "rotation": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "minPowerWatts": null,
+      "maxPowerWatts": null,
+      "powerVoltageVolts": 7.6,
+      "idleCurrentAmps": 5.3,
+      "runningCurrentAmps": null,
+      "peakCurrentAmps": null,
+      "shopProductId": "esp32-board"
+    },
+    {
+      "name": "Servo 2",
+      "objectType": "Servo",
+      "parent": "Base",
+      "position": {
+        "x": -20,
+        "y": 30,
+        "z": 20
+      },
+      "rotation": {
+        "x": 90,
+        "y": 0,
+        "z": 0
+      },
+      "model": "standard",
+      "type": "TD-7120MG",
+      "address": "0x41",
+      "channel": 1,
+      "enabled": true,
+      "reversed": false,
+      "continuous": false,
+      "initialMotionMode": "immediate",
+      "startupAngle": 90,
+      "minAngle": 0,
+      "maxAngle": 180,
+      "minPulseMicroseconds": 500,
+      "maxPulseMicroseconds": 2500,
+      "minPowerWatts": null,
+      "maxPowerWatts": null,
+      "powerVoltageVolts": null,
+      "idleCurrentAmps": null,
+      "runningCurrentAmps": null,
+      "peakCurrentAmps": null,
+      "shopProductId": "TD-7120MG"
+    },
+    {
+      "name": "Servo 3",
+      "objectType": "Servo",
+      "parent": "Servo 2",
+      "position": {
+        "x": -85,
+        "y": 0,
+        "z": 0
+      },
+      "rotation": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "model": "standard",
+      "type": "TD-7120MG",
+      "address": "0x41",
+      "channel": 2,
+      "enabled": true,
+      "reversed": false,
+      "continuous": false,
+      "initialMotionMode": "immediate",
+      "startupAngle": 90,
+      "minAngle": 0,
+      "maxAngle": 180,
+      "minPulseMicroseconds": 500,
+      "maxPulseMicroseconds": 2500,
+      "minPowerWatts": null,
+      "maxPowerWatts": null,
+      "powerVoltageVolts": null,
+      "idleCurrentAmps": null,
+      "runningCurrentAmps": null,
+      "peakCurrentAmps": null,
+      "shopProductId": "TD-7120MG"
+    },
+    {
+      "name": "VL53L0X V2 Time of Flight Sensor 1",
+      "objectType": "VL53L0X V2 Time of Flight Sensor",
+      "parent": "U Bracket Long 1",
+      "position": {
+        "x": 40,
+        "y": -30,
+        "z": 0
+      },
+      "rotation": {
+        "x": 0,
+        "y": 90,
+        "z": 0
+      },
+      "minPowerWatts": null,
+      "maxPowerWatts": null,
+      "powerVoltageVolts": null,
+      "idleCurrentAmps": null,
+      "runningCurrentAmps": null,
+      "peakCurrentAmps": null,
+      "shopProductId": "VL53L0X-V2"
+    },
+    {
+      "name": "Target 1",
+      "objectType": "Target",
+      "parent": null,
+      "position": {
+        "x": 85,
+        "y": 0,
+        "z": 0
+      },
+      "rotation": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "minPowerWatts": null,
+      "maxPowerWatts": null,
+      "powerVoltageVolts": null,
+      "idleCurrentAmps": null,
+      "runningCurrentAmps": null,
+      "peakCurrentAmps": null,
+      "shopProductId": null
+    },
+    {
+      "name": "U Bracket Long 1",
+      "objectType": "U Bracket Long",
+      "parent": "Servo 3",
+      "position": {
+        "x": 0,
+        "y": 7,
+        "z": 0
+      },
+      "rotation": {
+        "x": 0,
+        "y": 180,
+        "z": 0
+      },
+      "minPowerWatts": null,
+      "maxPowerWatts": null,
+      "powerVoltageVolts": null,
+      "idleCurrentAmps": null,
+      "runningCurrentAmps": null,
+      "peakCurrentAmps": null,
+      "shopProductId": "long-u-bracket"
+    },
+    {
+      "name": "U Bracket Long 2",
+      "objectType": "U Bracket Long",
+      "parent": "Servo 2",
+      "position": {
+        "x": 0,
+        "y": 7,
+        "z": 0
+      },
+      "rotation": {
+        "x": 0,
+        "y": 180,
+        "z": 0
+      },
+      "minPowerWatts": null,
+      "maxPowerWatts": null,
+      "powerVoltageVolts": null,
+      "idleCurrentAmps": null,
+      "runningCurrentAmps": null,
+      "peakCurrentAmps": null,
+      "shopProductId": "long-u-bracket"
+    },
+    {
+      "name": "GY-801 1",
+      "objectType": "GY-801",
+      "parent": "U Bracket Long 1",
+      "position": {
+        "x": 40,
+        "y": -5,
+        "z": 0
+      },
+      "rotation": {
+        "x": 0,
+        "y": 0,
+        "z": -90
+      },
+      "minPowerWatts": null,
+      "maxPowerWatts": null,
+      "powerVoltageVolts": null,
+      "idleCurrentAmps": null,
+      "runningCurrentAmps": null,
+      "peakCurrentAmps": null,
+      "shopProductId": "GY-801"
+    },
+    {
+      "name": "Box 50 mm 1",
+      "objectType": "Box 50 mm",
+      "parent": "Robot",
+      "position": {
+        "x": -95,
+        "y": 25,
+        "z": 0
+      },
+      "rotation": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "massGrams": 100000,
+      "minPowerWatts": null,
+      "maxPowerWatts": null,
+      "powerVoltageVolts": null,
+      "idleCurrentAmps": null,
+      "runningCurrentAmps": null,
+      "peakCurrentAmps": null,
+      "shopProductId": "box-50mm"
+    },
+    {
+      "minPowerWatts": null,
+      "maxPowerWatts": null,
+      "shopProductId": "PCA9685",
+      "name": "PCA9685 Servo Controller 1",
+      "objectType": "PCA9685 Servo Controller",
+      "parent": "Robot",
+      "position": {
+        "x": -35,
+        "y": 0,
+        "z": 0
+      },
+      "rotation": {
+        "x": 0,
+        "y": 90,
+        "z": 0
+      },
+      "powerVoltageVolts": null,
+      "idleCurrentAmps": null,
+      "runningCurrentAmps": null,
+      "peakCurrentAmps": null
+    },
+    {
+      "minPowerWatts": null,
+      "maxPowerWatts": null,
+      "shopProductId": null,
+      "lengthMm": 300,
+      "positionMm": 0,
+      "name": "Stepper Linear Actuator 1",
+      "objectType": "Stepper Linear Actuator",
+      "parent": "Robot",
+      "position": {
+        "x": 100,
+        "y": 0,
+        "z": 0
+      },
+      "rotation": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "powerVoltageVolts": null,
+      "idleCurrentAmps": null,
+      "runningCurrentAmps": null,
+      "peakCurrentAmps": null
+    },
+    {
+      "minPowerWatts": null,
+      "maxPowerWatts": null,
+      "shopProductId": "servo-sg90",
+      "model": "micro",
+      "type": "SG90",
+      "name": "Servo 1",
+      "objectType": "Servo",
+      "parent": "Robot",
+      "position": {
+        "x": -20,
+        "y": 0,
+        "z": 100
+      },
+      "rotation": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "address": "0x41",
+      "channel": 14,
+      "enabled": true,
+      "reversed": false,
+      "continuous": false,
+      "initialMotionMode": "smooth",
+      "startupAngle": 90,
+      "minAngle": 0,
+      "maxAngle": 120,
+      "minPulseMicroseconds": 500,
+      "maxPulseMicroseconds": 2500,
+      "powerVoltageVolts": null,
+      "idleCurrentAmps": null,
+      "runningCurrentAmps": null,
+      "peakCurrentAmps": null
+    },
+    {
+      "minPowerWatts": null,
+      "maxPowerWatts": null,
+      "shopProductId": "servo-sg90",
+      "model": "micro",
+      "type": "SG90",
+      "name": "Servo 4",
+      "objectType": "Servo",
+      "parent": "Servo 1",
+      "position": {
+        "x": 0,
+        "y": 10,
+        "z": 10
+      },
+      "rotation": {
+        "x": 90,
+        "y": 0,
+        "z": 0
+      },
+      "address": "0x41",
+      "channel": 15,
+      "enabled": true,
+      "reversed": false,
+      "continuous": false,
+      "initialMotionMode": "smooth",
+      "startupAngle": 90,
+      "minAngle": 0,
+      "maxAngle": 180,
+      "minPulseMicroseconds": 500,
+      "maxPulseMicroseconds": 2500,
+      "powerVoltageVolts": null,
+      "idleCurrentAmps": null,
+      "runningCurrentAmps": null,
+      "peakCurrentAmps": null
+    }
+  ],
+  "camera": {
+    "yaw": -0.6,
+    "pitch": 0.45,
+    "roll": 0,
+    "zoom": 0.7872499712053143,
+    "panX": -20,
+    "panY": 0,
+    "panZ": 100,
+    "perspective": false,
+    "showGrid": true,
+    "views": {
+      "u1": {
+        "yaw": 1.4967228404667712,
+        "pitch": 0.02962890625000006,
+        "roll": 0,
+        "zoom": 1.4556124579492953,
+        "panX": -3.7983645686298826,
+        "panY": 113.09928097974048,
+        "panZ": 108.54935009450459,
+        "perspective": true
+      },
+      "u2": {
+        "yaw": 2.489001100855418,
+        "pitch": 0.3081478881835937,
+        "roll": 0,
+        "zoom": 1.1655633209342564,
+        "panX": -35.687107759303174,
+        "panY": 113.43800738959422,
+        "panZ": -6.08472228992251,
+        "perspective": true
+      },
+      "u3": {
+        "yaw": -0.7976663796133328,
+        "pitch": 0.21481445312499992,
+        "roll": 0,
+        "zoom": 1.5733459145506419,
+        "panX": 160.42711970774937,
+        "panY": 113.43800738959422,
+        "panZ": 101.2262229009177,
+        "perspective": true
+      }
+    },
+    "webcam": {
+      "active": false,
+      "deviceId": "c8d78d74d13f84b7ded8713da9ca1fa10358354daa2672cfcab44e699dfc2857",
+      "fit": "cover",
+      "mirror": false,
+      "controls": {}
+    }
+  }
+}

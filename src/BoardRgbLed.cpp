@@ -14,6 +14,7 @@ void BoardRgbLed::begin() {
 }
 
 void BoardRgbLed::setColor(uint8_t red, uint8_t green, uint8_t blue) {
+  red_ = red; green_ = green; blue_ = blue;
 #if defined(CONFIG_IDF_TARGET_ESP32S3)
   rgbLedWrite(CONTROLLER_RGB_LED_PIN, red, green, blue);
 #else

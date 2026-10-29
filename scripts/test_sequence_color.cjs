@@ -3,7 +3,9 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const app = fs.readFileSync(require('node:path').join(__dirname, '../data/app.js'), 'utf8');
 const server = fs.readFileSync(require('node:path').join(__dirname, '../devserver/server.js'), 'utf8');
-const context = { offlineSimulation: false, AbortSignal, JSON,
+const context = { offlineSimulation: false, AbortSignal, JSON, ledColorRevision: 0, previewLedColor: [0, 0, 0],
+  drawServoPreview() {},
+  requestServoBatch: async entries => { assert.equal(entries.length, 0); },
   async fetch(url, options) {
     assert.equal(url, '/api/led');
     assert.deepEqual(JSON.parse(options.body), { rgb: [255, 0, 255] });
@@ -11,7 +13,9 @@ const context = { offlineSimulation: false, AbortSignal, JSON,
   }
 };
 vm.createContext(context);
+vm.runInContext(app.slice(app.indexOf('function setPreviewLedColor('), app.indexOf('function drawServoPreview(')), context);
 vm.runInContext(app.slice(app.indexOf('async function applySequenceStep('), app.indexOf('async function selectSequenceStep(')), context);
+vm.runInContext(app.slice(app.indexOf('async function selectSequenceStep('), app.indexOf('function encodeServoState(')), context);
 vm.runInContext(server.slice(server.indexOf('function validateSequence('), server.indexOf('function writeJsonFile(')), context);
 (async () => {
   const step = { type: 'color', rgb: [255, 0, 255], durationMs: 100 };
@@ -21,6 +25,13 @@ vm.runInContext(server.slice(server.indexOf('function validateSequence('), serve
   }
   // No servo controls are supplied: a color step must never touch servo state.
   await context.applySequenceStep(step);
+  assert.deepEqual(Array.from(context.previewLedColor), step.rgb);
+  Object.assign(context, { sequence: { steps: [step] }, sequencePlaying: false, sequenceSaving: false,
+    sequenceApplying: false, selectedSequenceStepIndex: -1, stepDurationInput: {},
+    setServoPlaybackLock() {}, renderSequence() {}, setText() {}, updateSequencerControls() {} });
+  await context.selectSequenceStep(0);
+  assert.equal(context.selectedSequenceStepIndex, 0, 'Color step can be selected and run');
+  assert.equal(context.sequenceApplying, false);
   context.servoControls = [{ ready: false }];
   context.applyServoState = () => { throw Error('Unavailable servo state must not change'); };
   context.requestServo = () => { throw Error('Unavailable servo must not receive commands'); };
@@ -32,5 +43,6 @@ vm.runInContext(server.slice(server.indexOf('function validateSequence('), serve
   context.offlineSimulation = false;
   context.fetch = async () => ({ ok: false, text: async () => 'LED unavailable' });
   await assert.rejects(context.applySequenceStep(step), /LED unavailable/);
+  assert.deepEqual(Array.from(context.previewLedColor), step.rgb, 'Failed LED request does not change displayed color');
   console.log('Color steps passed: RGB validation, playback API, servo isolation, simulation and request failure.');
 })().catch(error => { console.error(error); process.exitCode = 1; });

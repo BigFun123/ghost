@@ -1,1 +1,0 @@
-pio run -e esp32-s3-devkitc-1 -t uploadfs --upload-port COM10

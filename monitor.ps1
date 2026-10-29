@@ -1,0 +1,1 @@
+& 'C:\Users\onedr\.platformio\penv\Scripts\platformio.exe' device monitor --port COM11 --baud 115200

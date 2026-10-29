@@ -48,6 +48,7 @@ function renderPreviewFaces(ctx, faces, width, height, ratio) {
   });
   // Draw only visible polygon edges. Hidden edges cannot show through other parts.
   screenFaces.forEach(face => {
+    if (face.outline === false) return;
     let slopeX = 0, slopeY = 0;
     const faceA = face.points[0];
     for (let j = 1; j + 1 < face.points.length; ++j) {

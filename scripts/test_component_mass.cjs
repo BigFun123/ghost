@@ -1,0 +1,21 @@
+const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
+const {loadComponentRegistry}=require('../devserver/component-registry');
+const {validateConfiguration}=require('../devserver/server');
+const app=fs.readFileSync('data/app.js','utf8');
+const context={document:{},servoPreview:null,previewPhysics:null,previewPhysicsEnabled:false,setText(){},drawServoPreview(){},webcamStream:null,webcamVideo:{hidden:true,style:{}},selectedWebcamDevice:'',savedWebcamControls:{}};
+context.makeElement=(tag,cls,text)=>({tag,children:[],value:'',append(child){this.children.push(child);},setAttribute(){},addEventListener(event,fn){this[event]=fn;}});
+vm.createContext(context);loadComponentRegistry(context);
+for(const [start,end] of [['function configurationWithRobot(','function initializeServoPreview('],['function renderComponentMass(','function initializePreviewPlacementControls('],['function previewConfigurationSnapshot(','function updateRobotFolderControls(']])vm.runInContext(app.slice(app.indexOf(start),app.indexOf(end)),context);
+const config=JSON.parse(fs.readFileSync('data/robots/Walker/config.json','utf8'));
+config.components[0].massGrams=125;
+context.servoPreview={configuration:config,nodes:context.createRobotNodes(config),editing:true,yaw:0,pitch:0,roll:0,zoom:1,panX:0,panY:0,panZ:0,perspective:false};
+const node=context.servoPreview.nodes[0],host={children:[],append(child){this.children.push(child);}};
+context.renderComponentMass(node,host);
+const input=host.children[0].children[1].children[0];
+assert.equal(input.value,125);input.value='250';input.change();assert.equal(node.massGrams,250);
+let snapshot=context.previewConfigurationSnapshot();assert.equal(snapshot.components[0].massGrams,250);validateConfiguration(JSON.parse(JSON.stringify(snapshot)));assert.equal(context.createRobotNodes(snapshot)[0].massGrams,250);
+input.value='0';input.change();assert.equal(node.massGrams,250);
+input.value='-1';input.change();assert.equal(node.massGrams,250);
+input.value='';input.change();assert.equal(node.massGrams,undefined);snapshot=context.previewConfigurationSnapshot();assert.equal('massGrams' in snapshot.components[0],false);
+for(const value of [0,-1,'12',null]){snapshot.components[0].massGrams=value;assert.throws(()=>validateConfiguration(snapshot),/Mass/);assert.throws(()=>context.createRobotNodes(snapshot),/Mass/);}
+console.log('Component mass passed: input, save snapshot/reload, automatic fallback and invalid mass rejection.');

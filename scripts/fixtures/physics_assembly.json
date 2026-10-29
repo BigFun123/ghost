@@ -1,0 +1,319 @@
+{
+  "components": [
+    {
+      "name": "Walker",
+      "objectType": "Null",
+      "parent": null,
+      "position": {
+        "x": 0,
+        "y": 175,
+        "z": 0
+      },
+      "rotation": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "constraints": {
+        "y": {
+          "enabled": true,
+          "min": 0,
+          "max": 60
+        },
+        "x": {
+          "enabled": true,
+          "min": 0,
+          "max": 0
+        }
+      }
+    },
+    {
+      "name": "U Bracket Long 1",
+      "objectType": "U Bracket Long",
+      "parent": "Servo 1",
+      "position": {
+        "x": 0,
+        "y": 7,
+        "z": 0
+      },
+      "rotation": {
+        "x": 0,
+        "y": -180,
+        "z": 0
+      }
+    },
+    {
+      "name": "Servo 1",
+      "position": {
+        "x": 30,
+        "y": -1,
+        "z": 0
+      },
+      "rotation": {
+        "x": 0,
+        "y": 180,
+        "z": 0
+      },
+      "model": "standard",
+      "parent": "U Bracket Short 1",
+      "enabled": true,
+      "initialMotionMode": "immediate",
+      "startupAngle": 90,
+      "address": "0x41",
+      "channel": 0,
+      "minPulseMicroseconds": 500,
+      "maxPulseMicroseconds": 2500,
+      "type": "TD-7120MG",
+      "minAngle": 0,
+      "maxAngle": 180,
+      "reversed": false,
+      "objectType": "Servo",
+      "continuous": false
+    },
+    {
+      "name": "Servo 2",
+      "position": {
+        "x": 35,
+        "y": -1,
+        "z": 0
+      },
+      "rotation": {
+        "x": 0,
+        "y": 180,
+        "z": 0
+      },
+      "model": "standard",
+      "parent": "U Bracket Short 2",
+      "enabled": true,
+      "initialMotionMode": "immediate",
+      "startupAngle": 120,
+      "address": "0x41",
+      "channel": 1,
+      "minPulseMicroseconds": 500,
+      "maxPulseMicroseconds": 2500,
+      "type": "TD-7120",
+      "minAngle": 0,
+      "maxAngle": 270,
+      "reversed": false,
+      "objectType": "Servo",
+      "continuous": false
+    },
+    {
+      "name": "Servo 3",
+      "position": {
+        "x": 30,
+        "y": -1,
+        "z": 0
+      },
+      "rotation": {
+        "x": 0,
+        "y": 180,
+        "z": 0
+      },
+      "model": "standard",
+      "parent": "U Bracket Short 3",
+      "enabled": true,
+      "initialMotionMode": "immediate",
+      "startupAngle": 90,
+      "address": "0x41",
+      "channel": 2,
+      "minPulseMicroseconds": 500,
+      "maxPulseMicroseconds": 2500,
+      "type": "TD-7120",
+      "minAngle": 0,
+      "maxAngle": 180,
+      "reversed": false,
+      "objectType": "Servo",
+      "continuous": false
+    },
+    {
+      "name": "Servo 4",
+      "position": {
+        "x": 35,
+        "y": -1,
+        "z": 0
+      },
+      "rotation": {
+        "x": 0,
+        "y": 180,
+        "z": 0
+      },
+      "model": "standard",
+      "parent": "U Bracket Short 4",
+      "enabled": true,
+      "initialMotionMode": "immediate",
+      "startupAngle": 90,
+      "address": "0x41",
+      "channel": 3,
+      "minPulseMicroseconds": 500,
+      "maxPulseMicroseconds": 2500,
+      "type": "TD-7120",
+      "minAngle": 0,
+      "maxAngle": 180,
+      "reversed": false,
+      "objectType": "Servo",
+      "continuous": false
+    },
+    {
+      "name": "Servo 5",
+      "position": {
+        "x": -55,
+        "y": 45,
+        "z": 0
+      },
+      "rotation": {
+        "x": 0,
+        "y": 180,
+        "z": 90
+      },
+      "model": "micro",
+      "parent": "Walker",
+      "enabled": false,
+      "initialMotionMode": "immediate",
+      "startupAngle": 90,
+      "address": "0x41",
+      "channel": 4,
+      "minPulseMicroseconds": 500,
+      "maxPulseMicroseconds": 2500,
+      "type": "MicroServo 9g Rotary",
+      "minAngle": 0,
+      "maxAngle": 360,
+      "reversed": false,
+      "objectType": "Servo",
+      "continuous": false
+    },
+    {
+      "name": "Servo 6",
+      "position": {
+        "x": 55,
+        "y": 45,
+        "z": 0
+      },
+      "rotation": {
+        "x": 0,
+        "y": 0,
+        "z": -90
+      },
+      "model": "micro",
+      "parent": "Walker",
+      "enabled": true,
+      "initialMotionMode": "immediate",
+      "startupAngle": 90,
+      "address": "0x41",
+      "channel": 5,
+      "minPulseMicroseconds": 500,
+      "maxPulseMicroseconds": 2500,
+      "type": "MicroServo 9g",
+      "minAngle": 0,
+      "maxAngle": 180,
+      "reversed": false,
+      "objectType": "Servo",
+      "continuous": false
+    },
+    {
+      "name": "U Bracket Short 1",
+      "objectType": "U Bracket Short",
+      "parent": "Walker",
+      "position": {
+        "x": -15,
+        "y": -35,
+        "z": 0
+      },
+      "rotation": {
+        "x": 0,
+        "y": 0,
+        "z": -90
+      }
+    },
+    {
+      "name": "U Bracket Short 2",
+      "objectType": "U Bracket Short",
+      "parent": "U Bracket Long 1",
+      "position": {
+        "x": 65,
+        "y": -5,
+        "z": 0
+      },
+      "rotation": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      }
+    },
+    {
+      "name": "U Bracket Long 2",
+      "objectType": "U Bracket Long",
+      "parent": "Servo 2",
+      "position": {
+        "x": 0,
+        "y": 7,
+        "z": 0
+      },
+      "rotation": {
+        "x": 0,
+        "y": 180,
+        "z": 0
+      }
+    },
+    {
+      "name": "U Bracket Short 3",
+      "objectType": "U Bracket Short",
+      "parent": "Walker",
+      "position": {
+        "x": 55,
+        "y": -35,
+        "z": 0
+      },
+      "rotation": {
+        "x": 0,
+        "y": 0,
+        "z": -90
+      }
+    },
+    {
+      "name": "U Bracket Long 3",
+      "objectType": "U Bracket Long",
+      "parent": "Servo 3",
+      "position": {
+        "x": 0,
+        "y": 7,
+        "z": 0
+      },
+      "rotation": {
+        "x": 0,
+        "y": 180,
+        "z": 0
+      }
+    },
+    {
+      "name": "U Bracket Short 4",
+      "objectType": "U Bracket Short",
+      "parent": "U Bracket Long 3",
+      "position": {
+        "x": 65,
+        "y": -5,
+        "z": 0
+      },
+      "rotation": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      }
+    },
+    {
+      "name": "U Bracket Long 4",
+      "objectType": "U Bracket Long",
+      "parent": "Servo 4",
+      "position": {
+        "x": 0,
+        "y": 7,
+        "z": 0
+      },
+      "rotation": {
+        "x": 0,
+        "y": 180,
+        "z": 0
+      }
+    }
+  ]
+}

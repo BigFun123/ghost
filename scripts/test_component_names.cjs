@@ -1,0 +1,14 @@
+const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
+const {loadComponentRegistry}=require('../devserver/component-registry');
+const source=fs.readFileSync('data/app.js','utf8');
+const heading={textContent:'Aluminium Extrusion 20x20x100 mm 1'};
+const component={name:heading.textContent,objectType:'Aluminium Extrusion 20x20x100 mm'};
+const context={TextEncoder,document:{getElementById:id=>id==='previewSave'?{disabled:false}:heading},servoPreview:{editing:true,selected:0,nodes:[{...component}],configuration:{components:[{...component}]}},initializePreviewPlacementControls(){},drawServoPreview(){},setText(){}};
+vm.createContext(context);loadComponentRegistry(context);vm.runInContext(source.slice(source.indexOf('function commitPreviewComponentName('),source.indexOf('document.getElementById("setupSelectedName").addEventListener("blur"')),context);
+assert.equal(context.commitPreviewComponentName(),true,'selected default extrusion name must not block Save robot');
+heading.textContent='Long aluminium extrusion with a payload';assert.equal(context.commitPreviewComponentName(),true);
+heading.textContent='x'.repeat(64);assert.equal(context.commitPreviewComponentName(),false);
+context.servoPreview.nodes[0].objectType='Servo';heading.textContent='x'.repeat(32);assert.equal(context.commitPreviewComponentName(),false);
+heading.textContent='Servo 1';assert.equal(context.commitPreviewComponentName(),true);
+heading.textContent='é'.repeat(16);assert.equal(context.commitPreviewComponentName(),false,'servo name limit counts UTF-8 bytes');
+console.log('Component names passed: selected extrusion, long hardware names, 63-byte hardware limit and 31-byte servo limit.');

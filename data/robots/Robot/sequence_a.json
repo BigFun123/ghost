@@ -1,0 +1,58 @@
+{
+  "loop": true,
+  "finish": false,
+  "steps": [
+    {
+      "angles": [
+        89,
+        67,
+        147
+      ],
+      "servoStates": [
+        48,
+        48,
+        48
+      ],
+      "durationMs": 2000
+    },
+    {
+      "angles": [
+        81,
+        130,
+        47
+      ],
+      "servoStates": [
+        48,
+        48,
+        48
+      ],
+      "durationMs": 2000
+    },
+    {
+      "angles": [
+        101,
+        44,
+        180
+      ],
+      "servoStates": [
+        20,
+        20,
+        20
+      ],
+      "durationMs": 2000
+    },
+    {
+      "angles": [
+        85,
+        45,
+        180
+      ],
+      "servoStates": [
+        20,
+        20,
+        20
+      ],
+      "durationMs": 2000
+    }
+  ]
+}

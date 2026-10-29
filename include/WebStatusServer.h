@@ -24,12 +24,14 @@ class WebStatusServer {
   void saveServoConfiguration();
   void saveServoPositionsIfDue();
   void setServoAngle();
+  void setServoBatch();
 
   ControllerWebServer server_{80};
   Pca9685ServoTest* servos_ = nullptr;
   const ServoConfiguration* configurations_ = nullptr;
   uint8_t servoCount_ = 0;
   bool filesystemReady_ = false;
+  String runtimeRobot_;
   bool rebootPending_ = false;
   unsigned long rebootRequestedAt_ = 0;
   bool servoPositionsDirty_ = false;

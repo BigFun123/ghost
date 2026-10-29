@@ -51,12 +51,23 @@
     world.createCollider(RAPIER.ColliderDesc.cuboid(10, 0.05, 10).setTranslation(0, -0.05, 0).setFriction(0.8).setCollisionGroups((4 << 16) | 3));
     let robot = [], signature = '', accumulator = 0, destroyed = false;
     const cubes = [];
+    const colliderAssemblies = new Map();
+    const collisionHooks = {
+      filterContactPair(first, second) {
+        // Connected robot parts may overlap at mounts. Detached assemblies must collide.
+        if (colliderAssemblies.has(first) && colliderAssemblies.has(second) &&
+            colliderAssemblies.get(first) === colliderAssemblies.get(second)) return null;
+        return RAPIER.SolverFlags.COMPUTE_IMPULSE;
+      },
+      filterIntersectionPair() { return true; }
+    };
     let parts = new Map(), motors = [], supports = [], guides = [], articulated = false;
     const api = {
       world,
       sync(shapes, topology) {
         if (destroyed) return;
         if (signature !== topology || robot.length !== shapes.length) {
+          colliderAssemblies.clear();
           robot.forEach(entry => world.removeRigidBody(entry.body));
           robot = shapes.map(shape => {
             const body = world.createRigidBody(RAPIER.RigidBodyDesc.kinematicPositionBased()
@@ -77,12 +88,19 @@
       syncRobot(nodes, shapes, topology) {
         if (destroyed) return;
         if (!articulated || signature !== topology) {
+          colliderAssemblies.clear();
           robot.forEach(entry => world.removeRigidBody(entry.body));
           supports.forEach(body => world.removeRigidBody(body));
           supports = []; guides = [];
           robot = []; parts = new Map(); motors = []; articulated = true;
           // Weld attachments into compound rigid bodies. Fixed joints between tiny
           // brackets and heavier servos introduce solver flex that real mounts lack.
+          const nodeByIndex = new Map(nodes.map(node => [node.index, node]));
+          const assemblyFor = new Map(nodes.map(node => {
+            let root = node;
+            while (root.parent !== null) root = nodeByIndex.get(root.parent);
+            return [node.index, root.index];
+          }));
           const owners = new Map(), poses = new Map();
           const key = (index, side) => index + ":" + side;
           nodes.forEach(node => {
@@ -111,6 +129,15 @@
             parts.set(id, { body: group.body, offset: [center.x - group.center.x, center.y - group.center.y, center.z - group.center.z],
               rotation: quaternion(pose.axes), group });
           });
+          // Share each component's specified mass across its collider volumes.
+          // This preserves its total mass even when shapes occupy multiple bodies.
+          const volumes = new Map();
+          const volume = shape => shape.kind === "cylinder"
+            ? Math.PI * shape.radius * shape.radius * shape.height
+            : shape.dimensions.reduce((total, size) => total * size, 1);
+          shapes.forEach(shape => volumes.set(shape.index, (volumes.get(shape.index) || 0) + volume(shape)));
+          const masses = new Map(nodes.filter(node => Number.isFinite(node.massGrams) && node.massGrams > 0)
+            .map(node => [node.index, node.massGrams / 1000]));
           shapes.forEach(shape => {
             const part = parts.get(key(shape.index, shape.shaft ? "shaft" : "body"));
             const pose = poses.get(key(shape.index, shape.shaft ? "shaft" : "body"));
@@ -118,8 +145,20 @@
             const collider = shape.kind === "cylinder"
               ? RAPIER.ColliderDesc.cylinder(shape.height * METRES_PER_UNIT / 2, shape.radius * METRES_PER_UNIT)
               : RAPIER.ColliderDesc.cuboid(...shape.dimensions.map(value => value * METRES_PER_UNIT / 2));
-            world.createCollider(collider.setTranslation(center.x - origin.x, center.y - origin.y, center.z - origin.z)
-              .setRotation(shape.axes ? quaternion(shape.axes) : part.rotation).setDensity(800).setFriction(0.9).setCollisionGroups((1 << 16) | 6), part.body);
+            if (masses.has(shape.index)) collider.setMass(masses.get(shape.index) * volume(shape) / volumes.get(shape.index));
+            else collider.setDensity(800);
+            const created = world.createCollider(collider.setTranslation(center.x - origin.x, center.y - origin.y, center.z - origin.z)
+              .setRotation(shape.axes ? quaternion(shape.axes) : part.rotation).setFriction(0.9)
+              .setCollisionGroups((1 << 16) | 7).setActiveHooks(RAPIER.ActiveHooks.FILTER_CONTACT_PAIRS), part.body);
+            colliderAssemblies.set(created.handle, assemblyFor.get(shape.index));
+            part.group.shapes++;
+          });
+          nodes.forEach(node => {
+            // Components without visible geometry (such as Null) can carry mass too.
+            if (!masses.has(node.index) || volumes.has(node.index)) return;
+            const part = parts.get(key(node.index, "body"));
+            world.createCollider(RAPIER.ColliderDesc.ball(0.01).setSensor(true).setMass(masses.get(node.index))
+              .setTranslation(...part.offset), part.body);
             part.group.shapes++;
           });
           groups.forEach(group => {
@@ -219,7 +258,7 @@
         accumulator += Math.max(0, Math.min(seconds, 0.1));
         let steps = 0;
         while (accumulator >= world.timestep && steps < 12) {
-          world.step(); accumulator -= world.timestep; steps++;
+          world.step(undefined, collisionHooks); accumulator -= world.timestep; steps++;
         }
         if (steps === 12) accumulator = 0;
       },
@@ -259,7 +298,7 @@
       },
       resetRobot() { if (!destroyed) { signature = ""; accumulator = 0; } },
       clear() { if (!destroyed) { cubes.forEach(({ body }) => world.removeRigidBody(body)); cubes.length = 0; accumulator = 0; } },
-      destroy() { if (!destroyed) { destroyed = true; world.free(); robot = []; parts.clear(); motors = []; supports = []; guides = []; cubes.length = 0; } }
+      destroy() { if (!destroyed) { destroyed = true; world.free(); robot = []; parts.clear(); colliderAssemblies.clear(); motors = []; supports = []; guides = []; cubes.length = 0; } }
     };
     return api;
   }

@@ -1,13 +1,19 @@
 #include "ServoPositionStore.h"
 
 #include "AppLog.h"
+#include "RobotStorage.h"
 
 #include <ArduinoJson.h>
 #include <LittleFS.h>
 
 namespace {
-constexpr char kPositionFile[] = "/servo-positions.json";
-constexpr char kTemporaryPositionFile[] = "/servo-positions.json.tmp";
+String kPositionFile;
+String kTemporaryPositionFile;
+}
+
+void initializeServoPositionStorage() {
+  kPositionFile = RobotStorage::path("servo-positions.json");
+  kTemporaryPositionFile = kPositionFile + ".tmp";
 }
 
 bool loadServoPositions(uint8_t* positions, uint8_t capacity, uint8_t count) {
@@ -19,6 +25,7 @@ bool loadServoPositions(uint8_t* positions, uint8_t capacity, uint8_t count) {
     positions[index] = 0;
   }
 
+  initializeServoPositionStorage();
   File file = LittleFS.open(kPositionFile, "r");
   if (!file) {
     AppLog::println("No saved servo positions; starting at zero.");

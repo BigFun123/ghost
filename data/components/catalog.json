@@ -1,0 +1,48 @@
+{
+  "objectTypes": [
+    "Servo Shaft",
+    "Null",
+    "Target",
+    "Aluminium Panel 50x50 mm",
+    "Aluminium Panel 50x100 mm",
+    "Box 50 mm",
+    "Aluminium Extrusion 20x20x100 mm",
+    "Robot",
+    "PCA9685 Servo Controller",
+    "Servo",
+    "VL53L0X V2 Time of Flight Sensor",
+    "GY-801",
+    "OV7670 VGA Camera Module",
+    "Stepper Linear Actuator",
+    "U Bracket Short",
+    "U Bracket Long"
+  ],
+  "models": {
+    "Servo": [
+      "standard",
+      "micro"
+    ]
+  },
+  "numericSettings": {
+    "PCA9685 Servo Controller": {
+      "i2cAddress": {
+        "default": 64,
+        "min": 64,
+        "max": 119
+      }
+    },
+    "Stepper Linear Actuator": {
+      "lengthMm": {
+        "min": 1,
+        "max": 2000,
+        "default": 300
+      },
+      "positionMm": {
+        "min": 0,
+        "max": 2000,
+        "default": 0,
+        "maxField": "lengthMm"
+      }
+    }
+  }
+}
