@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { robotStorage } = require('./robot-storage');
 const { loadComponentRegistry, writeCatalog } = require('./component-registry');
+const { savePolicy, maxPolicyBytes } = require('./training-storage');
 
 async function proxyShopRequest(request, response, target, send) {
   let body = Buffer.alloc(0);
@@ -175,8 +176,9 @@ function writeJsonFile(file, value) {
   } finally { if (fs.existsSync(temporary)) fs.unlinkSync(temporary); }
 }
 
-function createServer(dataDirectory = path.resolve(__dirname, '../data'), shopOrigin = 'https://epistemic.co.za') {
+function createServer(dataDirectory = path.resolve(__dirname, '../data'), shopOrigin = 'https://epistemic.co.za', options = {}) {
   const root = fs.realpathSync(dataDirectory);
+  const trainingDirectory = options.trainingDirectory || path.resolve(root, '../training');
   const shopTarget = new URL(shopOrigin);
   if (!['http:', 'https:'].includes(shopTarget.protocol)) throw new Error('Shop origin must use HTTP or HTTPS.');
   if (root === fs.realpathSync(path.resolve(__dirname, '../data'))) writeCatalog();
@@ -193,7 +195,26 @@ function createServer(dataDirectory = path.resolve(__dirname, '../data'), shopOr
       const url = new URL(request.url, 'http://' + host);
       const robot = url.searchParams.get('robot') || storage.manifest().active;
       const configPath = storage.configPath(robot);
-      if (request.method === 'GET' && url.pathname === '/api/devserver') return send(200, JSON.stringify({ localConfigServer: true, shopProxy: true, robot }), mime['.json']);
+      if (request.method === 'GET' && url.pathname === '/api/devserver') return send(200, JSON.stringify({ localConfigServer: true, shopProxy: true, trainingPolicyStorage: true, robot }), mime['.json']);
+      if (request.method === 'POST' && url.pathname === '/api/training/policies') {
+        if (!(request.headers['content-type'] || '').startsWith('application/json')) return send(415, 'Expected application/json.');
+        const chunks = []; let size = 0;
+        for await (const chunk of request.iterator({ destroyOnReturn: false })) {
+          size += chunk.length;
+          if (size > maxPolicyBytes + 1024) { request.resume(); return send(413, 'Policy request exceeds 2 MB.'); }
+          chunks.push(chunk);
+        }
+        let body;
+        try { body = JSON.parse(Buffer.concat(chunks).toString('utf8')); }
+        catch { return send(400, 'Invalid policy JSON.'); }
+        let saved;
+        try { saved = savePolicy(trainingDirectory, body?.name, body?.policy); }
+        catch (error) {
+          if (error.code) throw error;
+          return send(400, error.message);
+        }
+        return send(201, JSON.stringify(saved), mime['.json']);
+      }
       if ((request.method === 'GET' && url.pathname === '/api/shop') ||
           (request.method === 'POST' && url.pathname === '/api/shop-init')) {
         return await proxyShopRequest(request, response, shopTarget, send);
@@ -274,6 +295,10 @@ function createServer(dataDirectory = path.resolve(__dirname, '../data'), shopOr
         writeJsonFile(target, patch.configuration);
         storage.select(targetName);
         return send(200, 'Saved data/robots/' + targetName + '/config.json on this PC.');
+      }
+      // Training dependencies live outside data/ so controller filesystem images stay small.
+      if ((request.method === 'GET' || request.method === 'HEAD') && url.pathname === '/vendor/tensorflow-4.22.0/tf.min.js') {
+        return send(200, request.method === 'HEAD' ? '' : fs.readFileSync(path.join(__dirname, 'vendor/tensorflow-4.22.0/tf.min.js')), mime['.js']);
       }
       if (url.pathname.startsWith('/api/')) return send(404, 'Only local config and sequence storage are supported.');
       if (request.method !== 'GET' && request.method !== 'HEAD') return send(405, 'Method not allowed.');

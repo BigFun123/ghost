@@ -55,7 +55,10 @@ const componentRegistry = (() => {
     attachment(nodes, index) {
       const node = nodes[index];
       const parent = node.parent == null ? null : nodes[node.parent - 1];
-      const hasShaft = target => nodes.some(child => child.parent === nodes.indexOf(target) + 1 && this.hasCapability(child, "servoShaft"));
+      // A shaft mounted on an inverted servo body belongs to another servo.
+      // It must not make that body's own shaft appear to be a child again.
+      const hasShaft = target => !this.hasCapability(nodes[(target.parent ?? 0) - 1] ?? {}, "servoShaft") &&
+        nodes.some(child => child.parent === nodes.indexOf(target) + 1 && this.hasCapability(child, "servoShaft"));
       const fixedSide = hasShaft(node) ? "body" : resolve(node)?.fixedSide?.({ node, parent, registry: this }) ?? "body";
       const parentSide = parent && this.hasCapability(parent, "actuator") ?
         (hasShaft(parent) ? (this.hasCapability(node, "servoShaft") ? "shaft" : "body") :
@@ -65,6 +68,13 @@ const componentRegistry = (() => {
     localPoseRotation(nodes, index, shaft) {
       const node = nodes[index];
       return resolve(node)?.localPoseRotation?.({ node, shaft, ...this.attachment(nodes, index) }) ?? [0, 0, 0];
+    },
+    placementRotation(nodes, index, shaft) {
+      const node = nodes[index];
+      // The explicit shaft is the mount frame. Editing its child body's
+      // orientation must not also rotate the shaft geometry drawn by that body.
+      return shaft && this.hasCapability(node, "actuator") &&
+        this.hasCapability(nodes[(node.parent ?? 0) - 1] ?? {}, "servoShaft") ? [0, 0, 0] : node.rotation;
     },
     childMountPoint(parent, point) {
       const offset = resolve(parent)?.childMountOffset?.(parent) ?? [0, 0, 0];

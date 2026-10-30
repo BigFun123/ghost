@@ -85,7 +85,9 @@ const tabs = [
   { button: document.getElementById("setupTab"), panel: document.getElementById("setupPanel") },
   { button: document.getElementById("title"), panel: document.getElementById("aboutPanel") },
   { button: document.getElementById("shopTab"), panel: document.getElementById("shopPanel") },
-  { button: document.getElementById("apiTab"), panel: document.getElementById("apiPanel") }
+  { button: document.getElementById("apiTab"), panel: document.getElementById("apiPanel") },
+  { button: document.getElementById("aiLearningTab"), panel: document.getElementById("aiLearningPanel") },
+  { button: document.getElementById("helpTab"), panel: document.getElementById("helpPanel") }
 ];
 var previewReady = false;
 const mixer = document.querySelector(".mixer");
@@ -241,6 +243,9 @@ function selectTab(selected) {
   document.body.classList.toggle("overview-active", selected === 0);
   document.body.classList.toggle("shop-active", selected === 5);
   document.body.classList.toggle("api-active", selected === 6);
+  document.body.classList.toggle("ai-learning-active", selected === 7);
+  document.body.classList.toggle("help-active", selected === 8);
+  if (selected === 7) globalThis.GhostLearning?.refresh();
   // Reuse the same canvas and controls so camera/edit state survives tab changes.
   if (selected === 1 || selected === 2 || selected === 3) {
     tabs[selected].panel.append(document.getElementById("previewPanel"));
@@ -274,6 +279,9 @@ tabs.forEach(({ button }, index) => {
   });
 });
 selectTab(1);
+
+document.getElementById("helpOpenLearning").addEventListener("click", () => document.getElementById("aiLearningTab").click());
+document.getElementById("helpOpenSetup").addEventListener("click", () => document.getElementById("setupTab").click());
 
 function makeElement(tag, className, text) {
   const element = document.createElement(tag);
@@ -1791,7 +1799,7 @@ function resetUnavailableConfiguration(error) {
   sequence = { loop: false, finish: true, steps: [] };
   sequenceLoaded = true;
   renderSequence(); updateSequencerControls();
-  document.getElementById("previewOffline").checked = true;
+  document.getElementById("previewOffline").setAttribute("aria-pressed", "true");
   document.getElementById("previewOffline").disabled = true;
   document.getElementById("rebootButton").disabled = true;
   updateRobotFolderControls();
@@ -1801,7 +1809,11 @@ function resetUnavailableConfiguration(error) {
 }
 
 // Simulation shares the command path, but never posts requests to the device.
+document.getElementById("previewOffline").addEventListener("click", () => setOfflineSimulation(!offlineSimulation));
+
 function setOfflineSimulation(enabled) {
+  document.getElementById("previewOffline").setAttribute("aria-pressed", String(enabled));
+  if (offlineSimulation !== enabled) globalThis.GhostLearning?.stopEnvironment();
   if (offlineSimulation === enabled) return;
   setText("connectionError", "");
   sensorTelemetry = null;
@@ -1810,7 +1822,6 @@ function setOfflineSimulation(enabled) {
   commandModeRevision += 1;
   offlineSimulation = enabled;
   document.getElementById("rebootButton").disabled = enabled || controllerRebooting;
-  document.getElementById("previewOffline").checked = enabled;
   servoControls.forEach((control, index) => {
     clearTimeout(control.timer);
     control.timer = null;
@@ -1981,49 +1992,12 @@ let previewPhysicsFrame = 0;
 let previewPhysicsRun = 0;
 let physicsControlsReady = false;
 
-function collectPreviewPhysicsShapes() {
-  const shapes = [];
-  servoPreview.nodes.forEach((node, index) => {
-    if (!componentRegistry.getPhysics(node).real) return;
-    const add = (kind, offset, dimensions, shaft, radius, height) => {
-      const origin = servoWorldPoint(servoPreview.nodes, index, [0, 0, 0], shaft);
-      const axes = [0, 1, 2].map(axis => servoWorldPoint(servoPreview.nodes, index,
-        [0, 1, 2].map(i => i === axis ? 1 : 0), shaft).map((value, i) => value - origin[i]));
-      shapes.push({ kind, index, shaft: !!shaft, offset: [...offset], center: servoWorldPoint(servoPreview.nodes, index, offset, shaft), axes, dimensions, radius, height });
-    };
-    componentRegistry.draw(node, { purpose: "physics", box: (offset, dimensions, color, shaft) => add("box", offset, dimensions, shaft),
-      cylinder: (offset, radius, height, color, shaft) => add("cylinder", offset, null, shaft, radius, height),
-      color: "#269f89", label() {} });
-  });
-  return shapes;
+function collectPreviewPhysicsShapes(nodes = servoPreview.nodes) {
+  return GhostRig.forRegistry(componentRegistry).physicsShapes(nodes);
 }
 
-function collectPreviewPhysicsNodes() {
-  return servoPreview.nodes.map((node, index) => {
-    const pose = shaft => {
-      const center = servoWorldPoint(servoPreview.nodes, index, [0, 0, 0], shaft);
-      const axes = [0, 1, 2].map(axis => servoWorldPoint(servoPreview.nodes, index,
-        [0, 1, 2].map(i => i === axis ? 1 : 0), shaft).map((value, i) => value - center[i]));
-      return { center, axes };
-    };
-    const { fixedSide } = componentRegistry.attachment(servoPreview.nodes, index);
-    let { parentSide } = componentRegistry.attachment(servoPreview.nodes, index);
-    let parent = node.parent === null ? null : node.parent - 1;
-    // Visual grouping nodes contribute no body, collider or mass. Weld through
-    // them to the nearest physical ancestor, retaining its attachment side.
-    while (parent !== null && !componentRegistry.getPhysics(servoPreview.nodes[parent]).real) {
-      parentSide = componentRegistry.attachment(servoPreview.nodes, parent).parentSide;
-      const ancestor = servoPreview.nodes[parent].parent;
-      parent = ancestor === null ? null : ancestor - 1;
-    }
-    return { index, parent, parentSide,
-      ...componentRegistry.getPhysics(node), servo: componentRegistry.hasCapability(node, "actuator"), null: componentRegistry.hasCapability(node, "constraints"), fixedSide,
-      constraints: componentRegistry.hasCapability(node, "constraints") ? node.constraints : undefined,
-      rotationConstraints: componentRegistry.hasCapability(node, "constraints") ? node.rotationConstraints : undefined,
-      body: pose(false), shaft: pose(true), target: (node.angle - 90) * Math.PI / 180,
-      continuous: node.continuous, velocity: (node.angle - 90) / 90 * 2 * Math.PI,
-      enabled: node.outputEnabled && node.enabled };
-  }).filter(node => node.real);
+function collectPreviewPhysicsNodes(nodes = servoPreview.nodes) {
+  return GhostRig.forRegistry(componentRegistry).physicsNodes(nodes);
 }
 
 function syncPreviewPhysics() {
@@ -2216,6 +2190,7 @@ function createRobotNodes(configuration) {
 }
 
 function initializeServoPreview(configurations, configuration = { components: configurations }) {
+  globalThis.GhostLearning?.stopEnvironment();
   const canvas = document.getElementById("servoScene");
   const button = document.getElementById("previewToggle");
   try {
@@ -2276,7 +2251,6 @@ function initializeServoPreview(configurations, configuration = { components: co
       catch (error) { setText("previewSaveStatus", "Load failed: " + error.message); }
       finally { event.target.value = ""; }
     });
-    document.getElementById("previewOffline").addEventListener("change", event => setOfflineSimulation(event.target.checked));
     const draw = () => {
       savePreviewCamera();
       drawServoPreview();
@@ -3032,7 +3006,7 @@ function initializePreviewPlacementControls() {
       const body = componentRegistry.hasCapability(node, "actuator") && servoPreview.nodes.some(child => child.parent === index + 1 && componentRegistry.hasCapability(child, "servoShaft"));
       const button = makeElement("button", "", node.name + (body ? " (Body)" : ""));
       button.type = "button";
-      button.draggable = !componentRegistry.hasCapability(node, "servoShaft");
+      button.draggable = true;
       button.addEventListener("dragstart", event => {
         if (!servoPreview.editing || document.getElementById("previewSave").disabled) {
           event.preventDefault(); return;
@@ -3143,7 +3117,7 @@ function initializePreviewPlacementControls() {
       const plus = makeElement("button", "", "+");
       [minus, plus].forEach((button, direction) => {
         button.type = "button";
-        button.setAttribute("aria-label", "Nudge " + (field === "rotation" ? "R" : "") + axis +
+        button.setAttribute("aria-label", "Nudge " + (field === "position" ? "local " : "R") + axis +
           (direction ? " plus " : " minus ") + (field === "position" ? "5 mm; Shift-click for 1 mm" : "15 degrees; Shift-click for 1 degree"));
         button.addEventListener("click", event => {
           const step = event.shiftKey ? 1 : (field === "position" ? 5 : 15);
@@ -3238,18 +3212,38 @@ let previewDraggedNode = null;
 
 function canReparentPreviewNode(index, parent) {
   if (!servoPreview || !Number.isInteger(index) || !servoPreview.nodes[index]) return false;
-  if (componentRegistry.hasCapability(servoPreview.nodes[index], "servoShaft")) return false;
+  const partner = previewServoPartner(index);
   const seen = new Set([index + 1]);
   for (let ancestor = parent; ancestor !== null; ancestor = servoPreview.nodes[ancestor - 1].parent) {
     if (!Number.isInteger(ancestor) || !servoPreview.nodes[ancestor - 1] || seen.has(ancestor)) return false;
+    if (ancestor === partner + 1) return false;
     seen.add(ancestor);
   }
   return true;
 }
 
+// Keep the mechanical pair together while allowing either end to be mounted.
+function previewServoPartner(index) {
+  const node = servoPreview.nodes[index];
+  const capability = componentRegistry.hasCapability(node, "servoShaft") ? "actuator" :
+    componentRegistry.hasCapability(node, "actuator") ? "servoShaft" : null;
+  const parent = node.parent === null ? -1 : node.parent - 1;
+  if (capability === "actuator" && parent >= 0) {
+    const body = servoPreview.nodes[parent];
+    if (body.parent !== null && componentRegistry.hasCapability(servoPreview.nodes[body.parent - 1], "servoShaft")) return -1;
+  }
+  return capability && parent >= 0 && componentRegistry.hasCapability(servoPreview.nodes[parent], capability) ? parent : -1;
+}
+
 function reparentPreviewNode(index, parent) {
   if (!servoPreview?.editing || document.getElementById("previewSave").disabled ||
       !canReparentPreviewNode(index, parent) || servoPreview.nodes[index].parent === parent) return;
+  const partner = previewServoPartner(index);
+  if (partner >= 0) {
+    servoPreview.nodes[partner].parent = index + 1;
+    servoPreview.nodes[partner].position = [0, 0, 0];
+    servoPreview.nodes[partner].rotation = [0, 0, 0];
+  }
   servoPreview.nodes[index].parent = parent;
   servoPreview.selected = index;
   initializePreviewPlacementControls();
@@ -3398,6 +3392,11 @@ document.getElementById("previewRemove").addEventListener("click", () => {
   const removed = servoPreview.nodes[index];
   if (!removed || componentRegistry.hasCapability(removed, "root")) return;
   if (componentRegistry.hasCapability(removed, "servoShaft")) return;
+  const mountedShaft = previewServoPartner(index);
+  if (mountedShaft >= 0) {
+    removed.parent = servoPreview.nodes[mountedShaft].parent;
+    servoPreview.nodes[mountedShaft].parent = index + 1;
+  }
   // Remove the integral shaft first, retaining its attachments on the body.
   for (let child = servoPreview.nodes.length - 1; child >= 0; child--) {
     if (servoPreview.nodes[child].parent !== index + 1 || !componentRegistry.hasCapability(servoPreview.nodes[child], "servoShaft")) continue;
@@ -3427,8 +3426,17 @@ function nudgePreviewServo(axis, amount) {
   if (!servoPreview || !servoPreview.editing || !Number.isInteger(axis) || axis < 0 || axis > 5 || !Number.isFinite(amount)) return;
   const node = servoPreview.nodes[servoPreview.selected];
   if (!node) return;
-  const vector = axis < 3 ? node.position : node.rotation;
-  vector[axis % 3] += amount;
+  if (axis < 3) {
+    // Position is stored in the parent frame; convert the component's local
+    // direction into that frame, using the same rotations as its geometry.
+    const direction = [0, 0, 0];
+    direction[axis] = amount;
+    const posed = rotateServoPoint(direction, componentRegistry.localPoseRotation(servoPreview.nodes, servoPreview.selected, false));
+    const delta = rotateServoPoint(posed, componentRegistry.placementRotation(servoPreview.nodes, servoPreview.selected, false));
+    node.position = node.position.map((value, index) => value + delta[index]);
+  } else {
+    node.rotation[axis - 3] += amount;
+  }
   setText("previewSaveStatus", "Unsaved placement changes");
   initializePreviewPlacementControls();
   drawServoPreview();
@@ -3461,28 +3469,18 @@ function updateServoPreview(servos) {
 }
 
 function rotateServoPoint(point, rotation) {
-  let [x, y, z] = point;
-  const [a, b, c] = rotation.map(degrees => degrees * Math.PI / 180);
-  [y, z] = [y * Math.cos(a) - z * Math.sin(a), y * Math.sin(a) + z * Math.cos(a)];
-  [x, z] = [x * Math.cos(b) + z * Math.sin(b), -x * Math.sin(b) + z * Math.cos(b)];
-  return [x * Math.cos(c) - y * Math.sin(c), x * Math.sin(c) + y * Math.cos(c), z];
+  return GhostRig.rotatePoint(point, rotation);
 }
 
 function servoWorldPoint(nodes, index, point, shaft = false) {
-  const node = nodes[index];
-  point = rotateServoPoint(point, componentRegistry.localPoseRotation(nodes, index, shaft));
-  point = rotateServoPoint(point, node.rotation).map((value, axis) => value + node.position[axis]);
-  if (node.parent === null) return point;
-  const { parentSide } = componentRegistry.attachment(nodes, index);
-  point = componentRegistry.childMountPoint(nodes[node.parent - 1], point);
-  return servoWorldPoint(nodes, node.parent - 1, point, parentSide === "shaft");
+  return GhostRig.forRegistry(componentRegistry).worldPoint(nodes, index, point, shaft);
 }
 
 function previewWorldPoint(nodes, index, point, shaft = false) {
   const node = nodes[index];
   if (previewPhysicsEnabled && previewPhysics && !componentRegistry.getPhysics(node).real) {
     point = rotateServoPoint(point, componentRegistry.localPoseRotation(nodes, index, shaft));
-    point = rotateServoPoint(point, node.rotation).map((value, axis) => value + node.position[axis]);
+    point = rotateServoPoint(point, componentRegistry.placementRotation(nodes, index, shaft)).map((value, axis) => value + node.position[axis]);
     return node.parent === null ? point : previewWorldPoint(nodes, node.parent - 1,
       componentRegistry.childMountPoint(nodes[node.parent - 1], point),
       componentRegistry.attachment(nodes, index).parentSide === "shaft");
@@ -3699,28 +3697,20 @@ function drawSelectedPreviewAxes(ctx, nodes, index, project, muted = false) {
 }
 
 function previewRayDistance(origin, direction, surfaces, sensorIndex, limit = 2000) {
-  const subtract = (a, b) => a.map((value, axis) => value - b[axis]);
-  const dot = (a, b) => a.reduce((sum, value, axis) => sum + value * b[axis], 0);
-  const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
-  // The floor is the solid half-space below world Y=0, independent of the grid.
-  let distance = origin[1] < -0.0001 ? 0 : direction[1] < -0.000001 ? Math.max(0, -origin[1] / direction[1]) : Infinity;
-  for (const surface of surfaces) {
-    if (surface.index === sensorIndex) continue;
-    const vertices = surface.vertices;
-    for (let i = 1; i + 1 < vertices.length; i++) {
-      const edge1 = subtract(vertices[i], vertices[0]), edge2 = subtract(vertices[i + 1], vertices[0]);
-      const p = cross(direction, edge2), determinant = dot(edge1, p);
-      if (Math.abs(determinant) < 0.000001) continue;
-      const offset = subtract(origin, vertices[0]);
-      const u = dot(offset, p) / determinant;
-      if (u < 0 || u > 1) continue;
-      const q = cross(offset, edge1), v = dot(direction, q) / determinant;
-      if (v < 0 || u + v > 1) continue;
-      const hit = dot(edge2, q) / determinant;
-      if (hit >= 0 && hit < distance) distance = hit;
+  return GhostSensor.raycast({ origin, direction, surfaces, sensorIndex, limit }).distanceMm;
+}
+
+function createPreviewSensorSampler() {
+  const nodes = servoPreview.nodes, worldPoint = previewWorldPoint;
+  let scene;
+  const readings = new Map();
+  return index => {
+    if (!readings.has(index)) {
+      scene ??= GhostSensor.buildScene({ nodes, worldPoint, registry: componentRegistry, props: previewPhysics?.boxes() ?? [] });
+      readings.set(index, GhostSensor.read({ nodes, index, worldPoint, scene }));
     }
-  }
-  return distance <= limit ? distance : null;
+    return readings.get(index);
+  };
 }
 
 function setPreviewLedColor(rgb, redraw = true) {
@@ -3729,10 +3719,10 @@ function setPreviewLedColor(rgb, redraw = true) {
   if (redraw) drawServoPreview();
 }
 
-function updateComponentPanels(surfaces = null) {
+function updateComponentPanels(surfaces = null, measureSensor = createPreviewSensorSampler()) {
   componentPanels.update({ nodes: servoPreview.nodes, surfaces, worldPoint: previewWorldPoint,
     offline: offlineSimulation, sensors: sensorTelemetry, telemetryAgeMs: performance.now() - sensorTelemetryAt,
-    rayDistance: previewRayDistance,
+    rayDistance: previewRayDistance, measureSensor,
     servoSolo: servoControls.some(control => control.solo),
     redraw: drawServoPreview,
     openSettings: node => {
@@ -3912,9 +3902,11 @@ function drawServoPreview() {
     });
   }
   renderPreviewFaces(ctx, faces, canvas.width, canvas.height, ratio);
-  updateComponentPanels(sensorSurfaces);
+  const measureSensor = createPreviewSensorSampler();
+  updateComponentPanels(sensorSurfaces, measureSensor);
   componentRegistry.drawOverlays({ ctx, nodes, surfaces: sensorSurfaces, project, line: gridLine, ratio,
-    worldPoint: previewWorldPoint, rayDistance: previewRayDistance, depthBuffers: previewDepthBuffers, state: { ledRgb: previewLedColor } });
+    offline: offlineSimulation, sensors: sensorTelemetry, telemetryAgeMs: performance.now() - sensorTelemetryAt,
+    worldPoint: previewWorldPoint, rayDistance: previewRayDistance, measureSensor, depthBuffers: previewDepthBuffers, state: { ledRgb: previewLedColor } });
   if (previewPhysics && previewPhysicsDebug) {
     previewPhysics.debugLines().forEach(({ start, end, color }) => gridLine(start, end, color, 1));
   }

@@ -208,7 +208,13 @@ void WebStatusServer::begin(Pca9685ServoTest* servos,
     sendAsset("/app.js", "application/javascript; charset=utf-8");
   });
   for (const char* path : {"/camera-renderer.js", "/component-panels.js",
-                           "/dialog.js", "/power-meters.js"}) {
+                           "/dialog.js", "/power-meters.js", "/simulated-sensor.js",
+                           "/ai-rig.js", "/ai-runtime.js", "/ai-task.js",
+                           "/ai-policy.js", "/ai-reward.js", "/ai-environment.js",
+                           "/ai-view.js", "/ai-baseline.js", "/ai-curriculum.js",
+                           "/ai-evaluation.js", "/ai-ppo.js", "/ai-training.js",
+                           "/ai-worker-client.js", "/ai-worker.js", "/ai-learning.js",
+                           "/ai-policy-file.js", "/ai-layout.js", "/ai-test-progress.js", "/ai-auto-training.js", "/ai-acquisition.js", "/ai-convergence.js"}) {
     server_.on(path, HTTP_GET, [this, path]() {
       sendAsset(path, "application/javascript; charset=utf-8");
     });

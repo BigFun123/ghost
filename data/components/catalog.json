@@ -31,6 +31,13 @@
         "max": 119
       }
     },
+    "VL53L0X V2 Time of Flight Sensor": {
+      "distanceMultiplier": {
+        "min": 0.001,
+        "max": 1000,
+        "default": 1
+      }
+    },
     "Stepper Linear Actuator": {
       "lengthMm": {
         "min": 1,

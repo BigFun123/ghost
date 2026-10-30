@@ -1,0 +1,18 @@
+const {test}=require('node:test');const assert=require('node:assert/strict');const {create,interval,quality,summarize}=require('../data/ai-convergence');
+const episodes=(successes=50,{seconds=2,travel=20}={})=>Array.from({length:50},(_,i)=>({seed:200003+i*101,reason:i<successes?'success':'time-limit',seconds,reward:i<successes?2:-1,jointTravelDegrees:travel,falseTargetDetections:0,falseHoldAttempts:0}));
+const add=(m,revision,successes=50,extra={})=>m.add({stageId:'nearby',revision,updates:revision*4,steps:revision*512,episodes:episodes(successes,extra),...extra});
+test('three quality/stable checkpoints converge; header rate is measured success',()=>{const m=create();assert.equal(add(m,1).status,'Insufficient evidence');add(m,2);const s=add(m,3);assert.equal(s.converged,true);assert.equal(s.rate,1);assert.equal(s.windows,3);assert(interval(50,50)[0]>.92);});
+test('low plateau and regressions never masquerade as successful convergence',()=>{const m=create();add(m,1,0);add(m,2,0);assert.equal(add(m,3,0).status,'Plateaued below target');m.clear();add(m,1,50);add(m,2,48);assert.equal(add(m,3,25).status,'Regressing');});
+test('time/travel instability and noisy success prevent convergence',()=>{const m=create();add(m,1,50);add(m,2,50,{seconds:3});assert.equal(add(m,3,50).converged,false);m.clear();add(m,1,46);add(m,2,50);assert.equal(add(m,3,46).converged,false);});
+test('duplicates do not inflate checkpoints; incomplete cases and cancellation are excluded',()=>{const m=create();add(m,1);add(m,1);assert.equal(m.state().windows,1);add(m,2,50,{cancelled:true});assert.equal(m.state().status,'Stale');assert.equal(m.state().windows,1);add(m,2,50,{episodes:episodes().map(row=>({...row,seed:1}))});assert.equal(m.state().windows,1);add(m,2);assert.equal(m.state().windows,2);});
+test('training, bank scope, restore and malformed archives invalidate evidence',()=>{const m=create();add(m,1);add(m,2);add(m,3);assert(m.state().converged);m.stale();assert.equal(m.state().status,'Stale');const saved=m.export(),restored=create();assert.equal(restored.restore(saved).converged,undefined);assert.equal(restored.state().windows,0);assert.equal(add(m,4,50,{stageId:'wide'}).windows,1);assert.doesNotThrow(()=>restored.restore({version:1,bank:'clean-v1',rows:[null,{},'junk']}));});
+test('invalid states, missing travel and false holds fail quality; CI uses one bank, not repeated totals',()=>{const e=episodes();e[0].falseHoldAttempts=1;assert.equal(quality(summarize(e)),false);const m=create();add(m,1,45);add(m,2,45);const s=add(m,3,45);assert.equal(s.converged,false);assert.equal(s.rows.at(-1).summary.n,50);assert(s.rows.at(-1).summary.interval[0]<.8);e[0].jointTravelDegrees=null;assert.equal(add(create(),1,50,{episodes:e}).rate,null);});
+
+test('monitoring and final qualification are long-running worker requests',async()=>{
+ const fs=require('node:fs'),vm=require('node:vm'),timers=[];
+ const context={setTimeout:(fn,ms)=>{timers.push(ms);return 1;},clearTimeout(){}};vm.createContext(context);vm.runInContext(fs.readFileSync('data/ai-worker-client.js','utf8'),context);
+ const client=context.GhostLearningWorker.create({workerFactory:()=>({postMessage(){},terminate(){}})});
+ const requests=['monitor','qualify'].map(type=>client.request(type).catch(error=>error.message));assert.equal(timers.length,0);client.dispose();await Promise.all(requests);
+});
+
+test('attempted training without a completed update cannot inflate stability',()=>{const m=create();for(let revision=1;revision<=4;revision++)add(m,revision,50,{updates:0});assert.equal(m.state().windows,1);assert.equal(m.state().converged,false);});

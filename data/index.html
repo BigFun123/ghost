@@ -12,6 +12,7 @@
 </head>
 
 <body>
+  <header class="app-header">
   <nav class="tabs" role="tablist" aria-label="Controller pages">
     <button class="tab titlecontainer" id="title" type="button" role="tab" aria-selected="false" aria-controls="aboutPanel" tabindex="-1">
     <img class="title-ghost" src="data:image/png;base64,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" width="32" height="32" alt="">
@@ -25,9 +26,13 @@
       tabindex="-1">Overview</button>
     <button class="tab" id="servoSettingsTab" hidden role="tab" aria-selected="false" aria-controls="servoSettingsPanel" tabindex="-1">Servo Settings</button>
     <button class="tab" id="setupTab" role="tab" aria-selected="false" aria-controls="setupPanel" tabindex="-1">Setup</button>
+    <button class="tab" id="aiLearningTab" type="button" role="tab" aria-selected="false" aria-controls="aiLearningPanel" tabindex="-1">AI Learning</button>
+    <button class="tab" id="helpTab" type="button" role="tab" aria-selected="false" aria-controls="helpPanel" tabindex="-1">Help</button>
     <button class="tab" id="shopTab" type="button" role="tab" aria-selected="false" aria-controls="shopPanel" tabindex="-1">Shop</button>
     <button class="tab" id="apiTab" type="button" role="tab" aria-selected="false" aria-controls="apiPanel" tabindex="-1">API</button>
   </nav>
+    <button id="previewOffline" class="offline-toggle" type="button" aria-pressed="false" title="Simulate locally without sending device commands">Offline</button>
+  </header>
   <main>
     <div class="panel" id="aboutPanel" role="tabpanel" aria-labelledby="title" hidden>
       <section class="about-content">
@@ -68,9 +73,19 @@
         <p><a href="https://epistemic.co.za/ghost.html" target="_blank" rel="noopener noreferrer">epistemic.co.za/ghost.html</a></p>
       </section>
     </div>
-    <div class="panel" id="overviewPanel" role="tabpanel" aria-labelledby="overviewTab" hidden>
-      <div class="grid">
-        <section>
+    <div class="panel overview-console" id="overviewPanel" role="tabpanel" aria-labelledby="overviewTab" hidden>
+      <header class="overview-header">
+        <div><span class="overview-eyebrow">GHOST / SYSTEM MONITOR</span><h1>Overview<span>.</span></h1><p>Controller health, connectivity, and runtime diagnostics.</p></div>
+        <span class="overview-badge">DEVICE TELEMETRY</span>
+      </header>
+      <div class="overview-vitals" aria-label="Key device readings">
+        <section class="overview-vital"><h2>Uptime</h2><output id="uptime">—</output><p>Since last restart</p></section>
+        <section class="overview-vital"><h2>Free heap</h2><output id="heap">—</output><p>Available runtime memory</p></section>
+        <section class="overview-vital"><h2>Wi-Fi signal</h2><output id="rssi">—</output><p>Received signal strength</p></section>
+      </div>
+      <div class="overview-details">
+        <section class="overview-card">
+          <div class="overview-card-heading"><span class="overview-eyebrow">01 / HARDWARE</span><span class="overview-card-tag">CONTROLLER</span></div>
           <h2>Device</h2>
           <dl>
             <dt>Chip ID</dt>
@@ -83,10 +98,25 @@
             <dd id="core">—</dd>
             <dt>Reset reason</dt>
             <dd id="resetReason">—</dd>
-            <dt>Uptime</dt>
-            <dd id="uptime">—</dd>
-            <dt>Free heap</dt>
-            <dd id="heap">—</dd>
+          </dl>
+        </section>
+        <section class="overview-card">
+          <div class="overview-card-heading"><span class="overview-eyebrow">02 / CONNECTIVITY</span><span class="overview-card-tag">WI-FI</span></div>
+          <h2>Network</h2>
+          <dl>
+            <dt>Network</dt>
+            <dd id="ssid">—</dd>
+            <dt>IP address</dt>
+            <dd id="ip">—</dd>
+            <dt>MAC</dt>
+            <dd id="mac">—</dd>
+          </dl>
+          <p class="overview-card-note">Network details reported by the controller.</p>
+        </section>
+        <section class="overview-card">
+          <div class="overview-card-heading"><span class="overview-eyebrow">03 / RESOURCES</span><span class="overview-card-tag">MEMORY</span></div>
+          <h2>Memory &amp; storage</h2>
+          <dl>
             <dt>Largest free block</dt>
             <dd id="largestBlock">—</dd>
             <dt>Heap fragmentation</dt>
@@ -99,21 +129,9 @@
             <dd id="otaSpace">—</dd>
           </dl>
         </section>
-        <section>
-          <h2>Wi-Fi</h2>
-          <dl>
-            <dt>Network</dt>
-            <dd id="ssid">—</dd>
-            <dt>IP address</dt>
-            <dd id="ip">—</dd>
-            <dt>Signal</dt>
-            <dd id="rssi">—</dd>
-            <dt>MAC</dt>
-            <dd id="mac">—</dd>
-          </dl>
-        </section>
       </div>
-      <section>
+      <section class="overview-card overview-log">
+        <div class="overview-card-heading"><span class="overview-eyebrow">04 / EVENT STREAM</span><span class="overview-card-tag">SERIAL CONSOLE</span></div>
         <h2>Serial output</h2>
         <textarea id="serialLog" aria-label="Recent serial output" readonly></textarea>
       </section>
@@ -239,7 +257,6 @@
         <div class="preview-toolbar">
           <h2 id="previewTitle">3D</h2>
           <div class="preview-toolbar-actions">
-            <label class="preview-labels-toggle" title="Simulate locally without sending device commands"><input id="previewOffline" type="checkbox"> Offline</label>
             <div id="previewCameraViews" class="preview-camera-views" role="group" aria-label="Camera views">
               <button type="button" data-view="left" title="View from left">Left</button>
               <button type="button" data-view="right" title="View from right">Right</button>
@@ -280,20 +297,25 @@
     <div class="panel setup-layout" id="setupPanel" role="tabpanel" aria-labelledby="setupTab" hidden>
       <section class="setup-hierarchy">
         <div class="setup-components-header">
-          <h2>Components</h2>
+          <span class="setup-eyebrow">GHOST / ASSEMBLY STUDIO</span>
+          <h2>Components<span class="setup-title-dot">.</span></h2>
+          <p class="setup-description">Build the structure. Refine every connection.</p>
           <div class="setup-component-actions" role="group" aria-label="Robot actions">
             <button id="previewNewRobot" type="button" title="Create a new robot">New</button>
             <button id="previewLoadRobot" type="button" title="Load a saved robot">Load</button>
             <button id="setupSaveConfig" type="button" title="Save this robot">Save</button>
-            <button id="rebootButton" type="button" title="Restart the physical controller">Reboot</button>
           </div>
         </div>
-        <button id="previewRemove" type="button">Remove Component</button>
-        <p class="subtle">Removing a component moves its children to its parent.</p>
-        <p class="subtle">Drag a component onto its new parent, or onto Scene to detach it. Local position and rotation stay unchanged.</p>
+        <div class="setup-section-heading"><span>01 / HIERARCHY</span><span>DRAG TO CONNECT</span></div>
         <ul id="previewServoSelection" class="component-tree" aria-label="Component hierarchy"></ul>
+        <details class="setup-help"><summary>Working with components</summary><p>Drag a component onto its new parent, or onto Scene to detach it. Local position and rotation stay unchanged.</p><p>Removing a component moves its children to its parent.</p></details>
+        <div class="setup-maintenance" role="group" aria-label="Component and controller actions">
+          <button id="previewRemove" type="button">Remove component</button>
+          <button id="rebootButton" type="button" title="Restart the physical controller">Reboot</button>
+        </div>
       </section>
       <section id="previewEditingControls" class="setup-options">
+        <div class="setup-section-heading"><span>02 / INSPECTOR</span><span>COMPONENT SETUP</span></div>
         <h2 id="setupSelectedName" contenteditable="plaintext-only" role="textbox" aria-label="Selected component name" aria-multiline="false" spellcheck="false" title="Click to rename. Enter to apply; Escape to cancel.">Component options</h2>
         <div id="setupAddComponent" hidden>
           <input id="previewAddComponent" type="hidden" value="">
@@ -322,14 +344,14 @@
             <button id="webcamToggle" type="button" aria-pressed="false" aria-controls="webcamVideo">Activate webcam</button>
           </fieldset>
         </div>
-        <small id="setupTransformHint" class="subtle">Positions in mm; rotations in degrees, relative to the parent. Shift-click nudges for 1 mm / 1 degree.</small>
+        <small id="setupTransformHint" class="subtle">Position fields are relative to the parent. Nudges follow local axes. Shift-click for fine steps: 1 mm / 1°.</small>
         <h3 id="servoSettingsTitle" hidden>Servo settings</h3>
         <form id="servoSettingsForm" hidden>
           <div id="servoSettingsFields" class="servo-settings-fields"></div>
           <p>Saved settings take effect after restarting the controller and reloading this page.</p>
         </form>
 
-        <p class="subtle">Save, restart the controller and reload after adding or removing servos. Review saved sequences after changing the servo list.</p>
+        <p class="subtle setup-save-note">Save, restart the controller and reload after adding or removing servos. Review saved sequences after changing the servo list.</p>
       </section>
     </div>
     <div class="panel mixer-layout" id="servoSettingsPanel" role="tabpanel" aria-labelledby="servoSettingsTab" hidden>
@@ -339,6 +361,218 @@
 
 
       </section>
+    </div>
+    <div class="panel ai-lab" id="aiLearningPanel" role="tabpanel" aria-labelledby="aiLearningTab" hidden>
+      <header class="ai-lab-header">
+        <div><span class="ai-eyebrow">GHOST / AUTONOMY LAB</span><h1>AI Learning Lab<span class="ai-title-dot">.</span></h1><p>Sensor acquisition &middot; Pan&ndash;tilt research environment</p></div>
+        <div class="ai-lab-badges"><span class="ai-badge"><i></i> SIMULATION ONLY</span><span id="aiPolicyState" class="ai-badge ai-muted">NO POLICY</span></div>
+      </header>
+      <div class="ai-lab-layout">
+        <div class="ai-control-column">
+          <section class="ai-card">
+            <div class="ai-card-heading"><span class="ai-eyebrow">01 / MISSION</span><span class="ai-small-label">TARGET ACQUISITION</span></div>
+            <h2>Aim. Acquire. Hold.</h2><p class="ai-description">Find the target with the distance sensor. Hold a clear return to complete the episode.</p>
+            <dl class="ai-rig-summary"><div><dt>Robot</dt><dd id="aiLearningRobot">No robot loaded</dd></div><div><dt>Sensor</dt><dd id="aiLearningSensor">Not selected</dd></div><div><dt>Target</dt><dd id="aiLearningTarget">Not selected</dd></div></dl>
+            <div class="ai-learning-fields">
+              <label>Distance sensor<select id="aiLearningSensorSelect"></select></label><label>Target<select id="aiLearningTargetSelect"></select></label>
+              <label>Pan / outer joint<select id="aiLearningPanSelect"></select></label><label>Tilt / inner joint<select id="aiLearningTiltSelect"></select></label>
+            </div>
+            <details class="ai-advanced"><summary>Episode configuration <span>+</span></summary><div class="ai-learning-fields">
+              <label>Hold duration / s<input id="aiLearningHold" type="number" min="0.05" max="60" step="0.05" value="0.5"></label><label>Episode limit / s<input id="aiLearningEpisode" type="number" min="0.1" max="60" step="0.1" value="10"></label>
+              <label>Random seed<input id="aiLearningSeed" type="number" step="1" value="42"></label><label>Compute backend<select id="aiLearningBackend"><option value="auto">Auto / WebGL &rarr; CPU</option><option value="webgl">WebGL</option><option value="cpu">CPU</option></select></label>
+            </div></details>
+            <div class="ai-learning-actions ai-start-actions"><button id="aiLearningInitialize" class="ai-primary" type="button">Initialize environment <span aria-hidden="true">&#8599;</span></button><button id="aiLearningValidate" type="button">Validate rig</button></div>
+            <p id="aiLearningStatus" class="ai-status" role="status">Awaiting initialization</p>
+          </section>
+          <section class="ai-card">
+            <div class="ai-card-heading"><h2 class="ai-eyebrow">02 / EPISODE CONTROL</h2><span class="ai-small-label">20 Hz ACTIONS</span></div>
+            <label class="ai-action-label">Manual test action<select id="aiLearningAction"><option value="0">Hold position</option><option value="1">Pan &minus; 2&deg;</option><option value="2">Pan + 2&deg;</option><option value="3">Tilt &minus; 2&deg;</option><option value="4">Tilt + 2&deg;</option></select></label>
+            <div class="ai-learning-actions"><button id="aiLearningStep" class="ai-primary" type="button" disabled>Step / 50 ms</button><button id="aiLearningReset" type="button" disabled>Reset</button><button id="aiLearningStop" class="ai-stop" type="button" disabled>Stop</button><button id="aiLearningReadSensor" type="button">Read sensor</button></div>
+            <p class="ai-footnote">Isolated physics. Bounded actions. Acquire and hold the target to earn a completion bonus.</p>
+          </section>
+          <section class="ai-card" aria-labelledby="aiBaselineTitle">
+            <div class="ai-card-heading"><h2 id="aiBaselineTitle" class="ai-eyebrow">03 / REFERENCE SCAN</h2><span class="ai-small-label">RASTER BASELINE</span></div>
+            <div class="ai-learning-fields">
+              <label>Curriculum stage<select id="aiBaselineStage"><option value="nearby">Configured target / near startup angles</option><option value="wide">Configured target / wider startup variation</option><option value="random-target">Random reachable targets</option></select></label>
+              <label>Seed split<select id="aiBaselineSplit"><option value="evaluation">Held-out evaluation</option><option value="training">Training cases</option></select></label>
+              <label>Episode count<input id="aiBaselineCount" type="number" min="1" max="5" step="1" value="3"></label>
+            </div>
+            <div class="ai-learning-actions"><button id="aiBaselineRun" class="ai-primary" type="button" disabled>Evaluate raster scan</button><button id="aiBaselineCancel" type="button" disabled>Cancel evaluation</button></div>
+            <p id="aiBaselineProgress" class="ai-status" role="status">Initialize the environment to evaluate.</p>
+            <p class="ai-footnote">A sensor-only reference, not a learned policy. It first homes to the lower joint limits (often 0 degrees), then scans; homing counts toward the episode limit. Any valid return may trigger a hold; false locks are counted. The episode limit may expire before a full scan.</p>
+          </section>
+          <section class="ai-card" aria-labelledby="aiTrainingTitle">
+            <div class="ai-card-heading"><h2 id="aiTrainingTitle" class="ai-eyebrow">04 / POLICY OPTIMIZATION</h2><span class="ai-small-label">PPO / ACTOR-CRITIC</span></div>
+            <div class="ai-learning-fields">
+              <label>Training stage<select id="aiTrainingStage"><option value="nearby">Configured target / near startup angles</option><option value="wide">Configured target / wider startup variation</option><option value="random-target">Random reachable targets</option></select></label>
+              <label>Policy seed<input id="aiTrainingSeed" type="number" step="1" value="42"></label>
+              <label>Updates this run<input id="aiTrainingUpdates" type="number" min="1" max="100" value="4"></label>
+              <label>Steps per rollout<select id="aiTrainingRollout"><option value="64">64</option><option value="128" selected>128</option><option value="256">256</option><option value="512">512</option></select></label>
+            </div>
+            <label class="ai-training-check"><input id="aiTrainingWarm" type="checkbox" checked><span>Warm start near the target to learn holding first</span></label>
+            <label class="ai-training-check"><input id="aiTrainingBridge" type="checkbox" checked><span>Progress from holding toward ordinary startup angles</span></label>
+            <div class="ai-auto-training">
+              <div class="ai-learning-fields"><label>Auto batch limit<input id="aiAutoBatches" type="number" min="1" max="500" step="1" value="100"></label></div>
+              <label class="ai-training-check"><input id="aiAutoEarlyStop" type="checkbox" checked><span>Stop early after convergence and final qualification</span></label>
+              <div class="ai-learning-actions"><button id="aiTrainingAuto" class="ai-primary" type="button">Full Auto Train</button></div>
+              <p id="aiAutoProgress" class="ai-status" role="status">Ready for automatic training.</p>
+              <p class="ai-footnote">Initializes if needed, then repeats progressive training, 50 monitoring cases, and a startup test. Three quality/stability checkpoints are required before testing the separate 50-case final bank against raster. A batch limit is not success. Completion saves current qualified weights; the limit saves the best monitored checkpoint. Stop auto train retains current weights for manual saving.</p>
+            </div>
+            <p id="aiCurriculumProgress" class="ai-footnote" role="status">Progressive starts advance on training success; this is not convergence.</p>
+            <p class="ai-footnote">With progression enabled, training starts near the target and moves toward ordinary startup angles after repeated training successes. It steps back if performance collapses. Evaluation always uses ordinary held-out starts. Networks receive the 29-value observation vector.</p>
+            <div class="ai-learning-actions ai-start-actions"><button id="aiTrainingStart" class="ai-primary" type="button" disabled>Train policy</button><button id="aiTrainingPause" type="button" disabled>Pause</button><button id="aiTrainingStop" type="button" disabled>Stop training</button></div>
+            <div class="ai-learning-actions ai-start-actions"><button id="aiTrainingEvaluate" type="button" disabled>Evaluate / convergence (50)</button><button id="aiTrainingQualify" type="button" disabled>Final qualification (50)</button><button id="aiTrainingRestoreBest" type="button" disabled>Restore best monitored checkpoint</button><button id="aiTrainingDiscard" class="ai-stop" type="button" disabled>Discard policy</button></div>
+            <p class="ai-footnote">Evaluation starts near the configured startup angles, not near the target. PPO runs first without forced homing. The paired raster comparison then homes to the lower joint limits before scanning. It uses the reference scan episode count and the selected training stage, with warm starts off. Discard the policy to choose a new seed.</p>
+            <div class="ai-learning-actions ai-start-actions"><button id="aiTrainingSave" type="button" disabled>Save policy</button><button id="aiTrainingLoad" type="button" disabled>Load policy</button><input id="aiPolicyFile" type="file" accept=".json,application/json" hidden></div>
+            <p id="aiPolicyFileStatus" class="ai-footnote" role="status">Devserver saves to training/; other hosts download JSON. Loading restarts optimizer and rollout state.</p>
+            <p id="aiTrainingProgress" class="ai-status" role="status">Initialize the environment before training.</p>
+          </section>
+          <section class="ai-card ai-console" aria-labelledby="aiLearningOutputTitle"><div class="ai-card-heading"><h2 id="aiLearningOutputTitle" class="ai-eyebrow">06 / EVENT STREAM</h2><button id="aiLearningClear" class="ai-text-button" type="button">Clear</button></div><pre id="aiLearningOutput" role="log" aria-live="polite" aria-relevant="additions" aria-label="Learning output"></pre></section>
+        </div>
+        <div class="ai-view-column">
+          <section class="ai-simulation" aria-labelledby="aiSimulationTitle">
+            <div class="ai-view-header"><div><span class="ai-eyebrow">SPATIAL TELEMETRY</span><h2 id="aiSimulationTitle">Simulation twin</h2></div><div class="ai-convergence" aria-describedby="aiConvergenceStatus"><span class="ai-convergence-label">Convergence:</span><output id="aiConvergenceValue" aria-label="Convergence not measured">&mdash;</output><span id="aiConvergenceStatus">Not measured</span></div><span id="aiLearningViewMode" class="ai-badge ai-muted">RIG PREVIEW</span></div>
+            <div class="ai-viewport"><canvas id="aiLearningScene" tabindex="0" aria-label="3D learning simulation. Drag to orbit, scroll to zoom. Arrow keys rotate; plus and minus zoom."></canvas><div class="ai-viewport-caption"><span>WORLD / mm</span><span>120 Hz PHYSICS</span></div><button id="aiLearningFrame" type="button" class="ai-frame-button">Recenter view</button><p id="aiLearningViewEmpty" class="ai-view-empty">Load a robot to inspect its training rig.</p></div>
+            <div class="ai-view-legend"><span><i class="ai-legend-beam"></i> SENSOR RAY</span><span><i class="ai-legend-target"></i> TARGET</span><span id="aiLearningViewHint">Configured pose &middot; initialize to view isolated physics</span></div>
+            <div class="ai-telemetry"><div><span>SIM TIME</span><output id="aiMetricTime">&mdash;</output><small>seconds</small></div><div><span>RANGE</span><output id="aiMetricRange">&mdash;</output><small>millimetres</small></div><div><span>TARGET HOLD</span><output id="aiMetricHold">&mdash;</output><small>seconds</small></div><div><span>PAN / TILT</span><output id="aiMetricAngles">&mdash;</output><small>degrees</small></div></div>
+          </section>
+          <section class="ai-card" aria-labelledby="aiTestTitle">
+            <div class="ai-card-heading"><h2 id="aiTestTitle" class="ai-eyebrow">05 / TEST POLICY</h2><span class="ai-small-label">INFERENCE ONLY</span></div>
+            <p class="ai-footnote">Run the retained or loaded policy once against the initialized target. Choose a starting pose and watch its actions in the simulation twin. Weights stay frozen; this test does not run the raster comparison.</p>
+            <div class="ai-learning-fields"><label>Starting pan (degrees)<input id="aiTestPan" type="number" step="0.1" value="90" disabled></label><label>Starting tilt (degrees)<input id="aiTestTilt" type="number" step="0.1" value="90" disabled></label></div>
+            <div class="ai-learning-actions"><button id="aiTestRun" class="ai-primary" type="button" disabled>Run policy test</button><button id="aiTestStop" class="ai-stop" type="button" disabled>Stop test</button></div>
+            <p id="aiTestAction" class="ai-footnote" aria-live="polite">No policy action yet.</p>
+            <p id="aiTestStatus" class="ai-status" role="status">Initialize the environment, then train or load a policy to test it.</p>
+            <div class="ai-test-progress">
+              <div class="ai-card-heading"><h3>Policy test progress</h3><button id="aiTestHistoryClear" type="button">Clear history</button></div>
+              <label>Compare starting pose<select id="aiTestHistoryPose" disabled></select></label>
+              <svg id="aiTestProgressGraph" viewBox="0 0 700 230" role="img" aria-label="No completed policy tests yet."></svg>
+              <div class="ai-progress-legend"><span><i style="background:#85f5dc"></i>Acquired</span><span><i style="background:#eec57e"></i>Other completed</span><span><i style="background:#ff8198"></i>Invalid state</span><span><i style="background:#8c9ca9"></i>Stopped (no score)</span></div>
+              <p id="aiTestHistorySummary" class="ai-footnote" role="status"></p><p id="aiTestHistoryDetail" class="ai-footnote"></p>
+              <p class="ai-footnote">Higher return can indicate improvement; acquisition is the primary result. Each curve compares the same starting angles and seed. Last five results are a small sample, not convergence. History holds the latest 100 tests in this page session and clears on policy discard/load, reinitialization or scene changes.</p>
+            </div>
+            <p class="ai-footnote">Runs at approximately 20 actions per second and ends on target acquisition, the mission time limit, an invalid state, or Stop test. The simulator verifies target identity. No controller commands are sent.</p>
+          </section>
+          <section class="ai-ppo-results" aria-labelledby="aiPPOResultsTitle">
+            <div class="ai-card-heading"><h2 id="aiPPOResultsTitle" class="ai-eyebrow">PPO OPTIMIZATION</h2><span class="ai-small-label">2 &times; 64 / TANH</span></div>
+            <div class="ai-baseline-metrics"><div><span>RUN STEPS</span><output id="aiPPOSteps">&mdash;</output></div><div><span>TOTAL UPDATES</span><output id="aiPPOUpdates">&mdash;</output></div><div><span>POLICY ENTROPY</span><output id="aiPPOEntropy">&mdash;</output></div><div><span>VALUE LOSS</span><output id="aiPPOValueLoss">&mdash;</output></div></div>
+            <div class="ai-monitor-history"><h3>Convergence evidence</h3><p id="aiConvergenceDetail" class="ai-footnote">No monitoring checkpoints yet. The header will show the latest monitoring acquisition rate, not a probability of convergence.</p><ol id="aiConvergenceHistory" aria-label="Monitoring checkpoint history"></ol><p class="ai-footnote">clean-v1: 50 monitoring + 50 separate final cases; each point reuses its fixed bank. Quality: success at least 90%, Wilson 95% lower bound at least 80%, no invalid states or false holds. Three distinct trained checkpoints must stay within 5 percentage points of success and 10% in successful-only median time and travel. Scope is the selected clean simulation stage, not real hardware or global optimality. Restored evidence is stale; collect fresh checkpoints.</p></div>
+            <p id="aiPPOTrainingSummary" class="ai-footnote">No optimizer updates yet.</p>
+            <p id="aiPPOEvaluation" class="ai-footnote">Held-out learned-policy evaluation has not run.</p>
+            <p id="aiPPOComparison" class="ai-footnote" role="status">Evaluate a policy to compare PPO and raster on identical held-out seeds.</p>
+          </section>
+          <section class="ai-baseline-results" aria-labelledby="aiBaselineResultsTitle">
+            <div class="ai-card-heading"><h2 id="aiBaselineResultsTitle" class="ai-eyebrow">BASELINE EVALUATION</h2><span class="ai-small-label">FIXED SEEDS / NO TRAINING</span></div>
+            <div class="ai-baseline-metrics"><div><span>SUCCESS RATE</span><output id="aiBaselineSuccess">&mdash;</output></div><div><span>MEDIAN ACQUISITION</span><output id="aiBaselineTime">&mdash;</output></div><div><span>MEAN RETURN</span><output id="aiBaselineReward">&mdash;</output></div><div><span>FALSE LOCKS</span><output id="aiBaselineFalseLocks">&mdash;</output></div></div>
+            <p id="aiBaselineSummary" class="ai-footnote">Run the reference controller to establish a comparison.</p>
+            <ol id="aiBaselineEpisodes" class="ai-baseline-episodes" aria-label="Baseline episode results"></ol>
+          </section>
+          <section class="ai-reward-card" aria-labelledby="aiRewardTitle">
+            <div class="ai-card-heading"><h2 id="aiRewardTitle" class="ai-eyebrow">REWARD TELEMETRY</h2><span class="ai-small-label">MODEL v2</span></div>
+            <div class="ai-reward-totals"><div><span>EPISODE RETURN</span><output id="aiRewardTotal">&mdash;</output></div><div><span>LAST ACTION</span><output id="aiRewardStep">&mdash;</output></div></div>
+            <dl class="ai-reward-terms"><div><dt>Time</dt><dd id="aiRewardTime">&mdash;</dd></div><div><dt>Detection</dt><dd id="aiRewardDetection">&mdash;</dd></div><div><dt>Hold progress</dt><dd id="aiRewardHold">&mdash;</dd></div><div><dt>Alignment</dt><dd id="aiRewardAlignment">&mdash;</dd></div><div><dt>Movement</dt><dd id="aiRewardMovement">&mdash;</dd></div><div><dt>Joint limits</dt><dd id="aiRewardLimit">&mdash;</dd></div><div><dt>Completion</dt><dd id="aiRewardSuccess">&mdash;</dd></div><div><dt>Invalid state</dt><dd id="aiRewardInvalid">&mdash;</dd></div></dl>
+            <p class="ai-footnote">Terms show the last action. Alignment uses training-only geometry; target identity and position stay out of policy observations.</p>
+          </section>
+          <section class="ai-runtime-bar"><div><span class="ai-eyebrow">COMPUTE</span><output id="aiLearningRuntime">TensorFlow.js / standby</output></div><div><span class="ai-eyebrow">OBSERVATION SPACE</span><output id="aiMetricObservation">29 values / 4-frame history</output></div><span id="aiPolicyNote" class="ai-runtime-note">Stop training retains policy; reinitializing clears it.</span></section>
+          <p id="aiLearningEnvironment" class="ai-environment-summary">Initialize an isolated environment to begin.</p>
+        </div>
+      </div>
+    </div>
+    <div class="panel learning-help" id="helpPanel" role="tabpanel" aria-labelledby="helpTab" hidden>
+      <div class="help-content">
+        <header class="help-header">
+          <div><p class="help-kicker">GHOST / OPERATOR GUIDE</p><h1>Teach the robot to find its target.</h1><p>A practical guide to the AI Learning lab: set up the pan-tilt rig, train a policy, and check what it actually learned.</p></div>
+          <span class="help-badge">SIMULATION ONLY</span>
+        </header>
+        <nav class="help-topics" aria-label="Help topics"><a href="#help-start">First session</a><a href="#help-success">Path to success</a><a href="#help-controls">Controls</a><a href="#help-results">Reading results</a><a href="#help-files">Save &amp; troubleshoot</a></nav>
+        <section class="help-intro" aria-labelledby="help-goal"><div><p class="help-kicker">THE MISSION</p><h2 id="help-goal">Aim. Acquire. Hold.</h2><p>The pan and tilt servos aim the VL53L0X distance sensor. A successful episode keeps the nearest sensor return on the selected target for the configured hold time. A reading from the floor or another component does not count as success.</p></div><div class="help-actions"><button id="helpOpenLearning" type="button">Open AI Learning</button><button id="helpOpenSetup" type="button">Open Setup</button></div></section>
+        <section class="help-section" id="help-start" aria-labelledby="help-start-title">
+          <p class="help-kicker">01 / FIRST SESSION</p><h2 id="help-start-title">From a configured rig to a measured result</h2>
+          <ol class="help-steps">
+            <li><h3>Load the PanTilt robot</h3><p>Use Setup to select the PanTilt robot. The distance sensor must be attached beneath two enabled positional servos, with pan as the outer joint and tilt as the inner joint. Keep the target separate from the moving servo chain, above the floor and within reach of the sensor ray.</p></li>
+            <li><h3>Enable Offline simulation</h3><p>In Servo Mixer, check Offline in the 3D view. The local development server already enables this mode. Learning uses an isolated copy of the rig; its actions do not command the physical controller.</p></li>
+            <li><h3>Select the mission</h3><p>Open AI Learning. Under Mission, select the distance sensor, target, pan and tilt joints. Expand Episode configuration to choose the backend, seed, hold time and episode limit. Start with the defaults.</p></li>
+            <li><h3>Initialize the environment</h3><p>Click Initialize environment. The lab checks that the rig can aim at the target, starts TensorFlow.js in a worker, and creates an isolated physics world. Check the status and event stream for errors. Auto tries WebGL, then CPU; the compute bar reports the backend actually in use.</p></li>
+            <li><h3>Check a manual action</h3><p>Choose an action and click Step / 50 ms. Hold leaves the commanded angles unchanged; the other actions move pan or tilt by 2 degrees within its limits. Watch the sensor ray and telemetry. Reset starts a fresh episode; Read sensor reports the nearest return.</p></li>
+            <li><h3>Train holding first</h3><p>Under Policy Optimization, keep Warm start enabled and choose the configured target / near startup angles stage. Click Train policy. Warm starts place the rig nearly on target to make holding easier. Updates this run and Steps per rollout set the amount of training; the defaults are a short prototype run, not enough to establish reliable search.</p></li>
+            <li><h3>Watch a policy test</h3><p>In Test Policy, choose starting pan and tilt angles and click Run policy test. Watch the live simulation and latest action. Stop test ends inference and retains the policy. This is one fixed-target episode without training, start-pose jitter or a raster comparison. Action counts show whether the policy is choosing Hold or movement.</p></li>
+            <li><h3>Evaluate on unseen starts</h3><p>Click Evaluate learned policy. It uses the selected training stage and the Reference Scan episode count (1–5), with held-out seeds and warm starts off. PPO runs first, then raster scanning on identical cases. Compare acquisition success and movement, not just training reward.</p></li>
+            <li><h3>Save, then expand the challenge</h3><p>When the run has stopped, use Save policy to preserve its weights and results in training/ on the devserver, or as a download on other hosts. Continue training the retained policy, try ordinary starts with Warm start off, and progress to wider starts or randomized targets when evaluation supports it. Re-evaluate after each change.</p></li>
+          </ol>
+        </section>
+        <section class="help-section" id="help-success" aria-labelledby="help-success-title">
+          <p class="help-kicker">02 / PATH TO SUCCESS</p><h2 id="help-success-title">Build holding first. Prove search separately.</h2>
+          <p><strong>Reading Convergence:</strong> The big number is the latest complete monitoring success percentage, not a probability that the policy is optimal. Quality requires at least 90% success, a Wilson 95% lower bound of at least 80% (so at least 46/50 successes), zero invalid states and false holds. At least three distinct trained checkpoints must meet those rules, with success within 5 percentage points and successful-only median time/travel within 10% (floors: 0.1 s and 1 degree). Before that it reports insufficient evidence, improving/unstable, regressing or plateaued below target. Further training makes old evidence stale; repeated evaluation without training cannot create extra stability checkpoints. Loading/restoring marks archived evidence excluded, and rig/task changes require a new environment. Converged (validation) applies only to the selected clean simulation stage. Independent training seeds and physical robustness still require separate experiments.</p>
+          <p><strong>Full Auto Train:</strong> Choose the stage, update count, rollout length and batch limit, then press Full Auto Train. It initializes if needed and enables warm/progressive starts. After every batch it freezes weights, evaluates 50 monitoring cases and runs the startup-angle test (updating the test graph). The header displays that monitoring acquisition percentage, with a status and checkpoint count. Once three distinct trained checkpoints meet the quality and stability rules, a separate fresh 50-case final bank is compared with raster. Auto ends on final pass or failure; it does not repeatedly tune against that same final bank. Uncheck early stopping to continue to the budget before final qualification. At the limit it saves the best monitored checkpoint, which may still be unqualified; after qualification it saves current qualified weights. Stop auto train retains current weights for manual saving. Restore best monitored checkpoint restores weights with a fresh optimizer and marks archived evidence stale. With the default 100 x 4 x 128, the training budget is 51,200 action steps, plus monitoring, probes and tests.</p>
+          <p>Use the budgets below to plan experiments, not to promise convergence. The current short browser runs have not demonstrated reliable ordinary-start acquisition. Each budget is <strong>additional training action steps for that stage</strong>; move on when the behavior passes its checkpoint, not simply when the counter reaches a number.</p>
+          <div class="help-table-wrap"><table class="help-table"><thead><tr><th scope="col">Stage</th><th scope="col">Estimated steps</th><th scope="col">Settings to start with</th><th scope="col">Checkpoint before progressing</th></tr></thead><tbody>
+            <tr><th scope="row">1. Verify the task</th><td>0 training steps</td><td>Initialize, inspect the aiming pose in the event stream, and use manual steps to check the sensor and joint limits.</td><td>The target is reachable and unblocked. Understand which returns hit the target versus the floor. Record a raster baseline.</td></tr>
+            <tr><th scope="row">2. Learn to hold</th><td>About 1,000–10,000</td><td>Configured target / near startup angles; Warm start ON and progression ON. Try 20 updates × 256 rollout steps = 5,120 steps.</td><td>Use Test Policy with starting angles near the visible aiming pose from the event stream. Aim for at least 9 successes in 10 manually varied, nearly aimed tests. This checks holding only.</td></tr>
+            <tr><th scope="row">3. Acquire from ordinary starts</th><td>About 10,000–50,000</td><td>Keep the policy. Turn Warm start OFF; use near startup angles. Try batches of 20 updates × 512 steps = 10,240 steps.</td><td>Run Evaluate learned policy on all 5 held-out cases. As an initial milestone, seek at least 4/5 acquisitions and better success than raster. Check acquisition time and false holds too.</td></tr>
+            <tr><th scope="row">4. Widen the search</th><td>About 50,000–150,000</td><td>Choose wider startup variation; keep Warm start OFF. One batch of 100 updates × 512 steps = 51,200 steps; reassess between batches.</td><td>Maintain at least 4/5 acquisitions on the wider cases, and recheck the easier stage. Save a checkpoint before increasing difficulty so regressions can be compared.</td></tr>
+            <tr><th scope="row">5. Vary the target</th><td>About 100,000–300,000+</td><td>Choose Random reachable targets with Warm start OFF. Use further 51,200-step batches, with evaluation between them.</td><td>Acquire different generated targets without excessive travel or false holds. Compare with raster on the same cases. Do not infer generalization from one target or one successful seed.</td></tr>
+            <tr><th scope="row">6. Qualify and preserve the policy</th><td>No fixed training budget</td><td>Save policy, reload it into the matching setup, and repeat frozen tests. Preserve checkpoints when comparing independently trained policy seeds.</td><td>Before calling it reliable, target 90% or better across 50–100 distinct unseen cases and several training seeds. That broader qualification requires extending the current evaluation bank.</td></tr>
+          </tbody></table></div>
+          <h3>What counts as a step?</h3>
+          <p><strong>Training steps = Updates this run × Steps per rollout</strong> for a completed run. The default 4 × 128 is only 512 action steps. One action advances up to 50 ms of simulated time through six 120 Hz physics ticks; a full 10-second episode is about 200 actions. Optimizer minibatches and physics ticks are not extra action steps. An early terminal action can advance less than 50 ms.</p>
+          <p>Repeated Train policy runs continue the retained weights; Run Steps describes the current run. Save separate checkpoints to track your total training budget. Partial runs can contain sampled steps or optimizer work without a complete update, so their totals may differ from the planned budget.</p>
+          <h3>How much real time should I allow?</h3>
+          <p>Use the measured steps/s in PPO Optimization: <strong>estimated seconds ≈ planned action steps ÷ measured steps/s</strong>. At 20 steps/s, 10,000 steps take about 8 minutes, 50,000 about 42 minutes, and 100,000 about 83 minutes. Your browser, backend and scene can change that rate; evaluation adds time. Training runs independently of render speed, while the interactive policy test is paced near real time.</p>
+          <h3>If progress stalls, diagnose before adding more steps</h3>
+          <p>If holding works but ordinary-start acquisition stays at zero, check reachability, episode duration, false holds and the gap between training and evaluation starts. Save the current policy, compare a fresh policy seed, and evaluate in measured batches. Flat results across several batches are a reason to revisit the curriculum, reward or exploration settings rather than assume a larger budget will fix them.</p>
+          <p class="help-note"><strong>Current limits:</strong> Warm start places training within roughly 0.25 degrees of the aiming pose; ordinary starts are around the configured startup angles (±5 degrees or ±20 degrees). The progression checkbox bridges those poses in six stages using frozen training-case probe outcomes. It requires at least 8 successes in 10 recent episodes to advance and steps back after poor performance. This is training guidance, not held-out convergence. Monitoring now uses 50 fixed cases per stage, and final qualification reserves a separate 50-case bank. Repeated monitoring is not new independent evidence. These clean-model cases do not yet cover occlusion, sensor noise, varied deadlines or independent training-seed replication; the estimates above are experimental planning ranges, not measured requirements or guarantees.</p>
+        </section>
+        <section class="help-section" id="help-controls" aria-labelledby="help-controls-title">
+          <p class="help-kicker">03 / CONTROLS</p><h2 id="help-controls-title">Know what each control retains</h2>
+          <p>Use the + and minus buttons in AI Learning section headers to expand or collapse them. Collapse all and Expand all are in the Spatial Telemetry title area, alongside the training, testing, evaluation, save/load and manual controls. These controls remain available when the Simulation Twin is collapsed. Quick actions use the settings already selected in each section. Collapsing a section does not pause a run; your expanded/collapsed choices are remembered in this browser.</p>
+          <div class="help-table-wrap"><table class="help-table"><thead><tr><th scope="col">Control</th><th scope="col">What it does</th></tr></thead><tbody>
+            <tr><th scope="row">Train policy</th><td>Collects rollouts and updates PPO. Later runs continue the current weights. The policy seed is locked until you discard or replace the policy.</td></tr>
+            <tr><th scope="row">Pause / Resume</th><td>Freezes and resumes training while retaining the current episode, rollout and policy. The 3D view can still be orbited and zoomed.</td></tr>
+            <tr><th scope="row">Stop training</th><td>Ends the run and retains current weights, including optimizer work already applied. An incomplete rollout is discarded.</td></tr>
+            <tr><th scope="row">Run policy test / Stop test</th><td>Runs one frozen-policy episode from your chosen pan/tilt angles at approximately real-time speed. Stops on acquisition, timeout, invalid state or your request, retaining the policy.</td></tr>
+            <tr><th scope="row">Evaluate learned policy</th><td>Freezes the weights and compares PPO with raster on the same held-out cases. Stop evaluation keeps completed episodes and labels the comparison incomplete.</td></tr>
+            <tr><th scope="row">Evaluate raster scan</th><td>Runs only the reference scanner, using its own curriculum stage, seed split and episode count. It does not train a network.</td></tr>
+            <tr><th scope="row">Reset</th><td>Resets the manual episode. It does not discard a trained policy.</td></tr>
+            <tr><th scope="row">Discard policy</th><td>Clears the current model. The next training run creates fresh weights and allows a new policy seed.</td></tr>
+            <tr><th scope="row">Stop / Validate rig / Initialize again</th><td>Clears the learning session and its policy. Changing the mission, robot or simulation mode, or reloading the page, also clears it. Save useful weights first.</td></tr>
+          </tbody></table></div>
+          <p class="help-note">Switching between Help and AI Learning does not stop a run. Save and Load are available only while the environment is initialized and no run is active.</p>
+          <h3>Choose a curriculum stage</h3><p><strong>Nearby:</strong> the configured target, with small variations around the configured starting angles. <strong>Wider:</strong> larger starting-angle variations. <strong>Random reachable targets:</strong> seeded target positions that the rig can see from a reachable pose. Warm start begins near the target; with progression checked it gradually transitions toward ordinary starts; evaluation always uses ordinary starts.</p>
+        </section>
+        <section class="help-section" id="help-results" aria-labelledby="help-results-title">
+          <p class="help-kicker">04 / READING RESULTS</p><h2 id="help-results-title">A high reward is a clue. Acquisition is the test.</h2>
+          <h3 id="help-held-out">What are held-out evaluations?</h3>
+          <p><strong>Held-out means reserved from training.</strong> Think of training as practice exercises and held-out evaluation as an exam. The policy learns from one set of scenarios, then is tested on separate scenarios without changing its weights. This checks whether it can handle situations it did not practice.</p>
+          <p>Here, a scenario is a repeatable starting setup identified by a seed (a number used to reproduce the setup). Configured-target stages test different starting angles; Random reachable targets also uses different target positions. The evaluation seeds are separate from the training seeds. Warm start is off during evaluation, even if it was on during training.</p>
+          <h3>How to evaluate between training batches</h3>
+          <ol>
+            <li><p>Let the current Train policy run finish.</p></li>
+            <li><p>In Reference Scan, set <strong>Episode count to 5</strong>.</p></li>
+            <li><p>In Policy Optimization, keep the training stage you want to test and click <strong>Evaluate learned policy</strong>. This button uses the Policy Optimization stage and the Reference Scan episode count; the standalone raster stage/seed-split selections do not choose the paired policy tests.</p></li>
+            <li><p>Evaluate / convergence tests the frozen policy on all 50 monitoring cases. Final qualification, enabled after convergence, uses a separate 50-case bank and compares raster on the same final cases. No policy weights are updated.</p></li>
+            <li><p>Record the result, train another batch, then evaluate again under the same settings. <strong>3/5 acquired</strong> means three test episodes successfully found and held the target; it does not mean the policy is 60% converged.</p></li>
+          </ol>
+          <p class="help-note">Monitoring reuses the <strong>same 50 reserved cases each checkpoint</strong> so progress is comparable. They are a validation set used for training decisions. The 95% Wilson interval is calculated from that checkpoint alone; repeating cases never increases its sample count. Final qualification uses another bank, with a new reproducible seed range per attempt. Bank identifiers and episode seeds are saved with policy data. Reopening an older checkpoint can repeat previously seen final cases, so preserve experiment provenance when judging unseen performance.</p>
+          <div class="help-result-grid">
+            <article><h3>Success &amp; acquisition time</h3><p>Success means the selected target was held for the required time. Median acquisition uses successful episodes only. A dash means no successful acquisition was available. A timeout means the episode limit expired.</p></article>
+            <article><h3>Reward &amp; losses</h3><p>Return combines detection, hold progress, alignment and completion rewards with time, movement and limit penalties. Alignment uses simulation geometry for training. Policy/value loss and entropy describe optimization; they do not prove that the robot learned to search.</p></article>
+            <article><h3>Travel &amp; false returns</h3><p>Travel sums actual joint movement at 120 Hz, excluding reset settling. False returns count continuous stretches of valid readings from non-target surfaces at the 20 Hz observation rate. False holds count continuous Hold actions on those readings. Raster false locks count its separate lock attempts.</p></article>
+            <article><h3>Fair comparison</h3><p>The paired evaluation uses identical seeds, target positions, initial poses and time limits for both controllers. Compare success first, then acquisition time, return and travel. A partial comparison is unfinished evidence. Zero successes for both does not establish equivalence.</p></article>
+          </div>
+          <p class="help-note">Warm-start success demonstrates holding near an already aimed pose, not finding a target from an ordinary start. The policy receives joint angles, velocities, distance validity/range, recent history and the previous action. Target identity and position stay out of its observations.</p>
+        </section>
+        <section class="help-section" id="help-files" aria-labelledby="help-files-title">
+          <p class="help-kicker">05 / SAVE &amp; TROUBLESHOOT</p><h2 id="help-files-title">Keep your work and diagnose the next step</h2>
+          <p><strong>Save policy</strong> writes a uniquely named JSON file to the project training/ folder on the devserver, or downloads a JSON file on other hosts. It contains weights, training settings, rig/schema compatibility data and available evaluation results. It is separate from robot configuration and sequence files.</p>
+          <p><strong>Load policy</strong> accepts a compatible JSON file up to 2 MB. Initialize the matching rig and task first. Loading replaces weights and restarts the optimizer, sampling generator and rollout state; it is not an exact session resume. A rejected file leaves the current policy intact. Run a fresh evaluation after loading.</p>
+          <details><summary>Initialization says the rig cannot reach the target</summary><p>Check the selected joints and sensor ancestry, servo enabled state and positional mode, joint limits, target height and target placement. The target must not move with the sensor. A visible kinematic pose is a setup check; physical settling and the timed hold are tested in the isolated simulation.</p></details>
+          <details><summary>TensorFlow or WebGL fails to initialize</summary><p>Use the local development server for training assets. Try CPU in Episode configuration and initialize again. CPU may run more slowly. Read the event stream for the specific failure; the compute bar shows whether initialization succeeded.</p></details>
+          <details><summary>The sensor reports no hit or hits the floor</summary><p>The simulated sensor uses a single forward ray with a 2000 mm range. It reports the nearest surface, which may block the target. Orbit the 3D view, inspect the ray, and use bounded manual steps to check the aim. A valid distance alone does not mean the target was found.</p></details>
+          <details><summary>Training succeeds, but evaluation scores zero</summary><p>Warm-start training with progression off may have taught holding only. Enable progression to bridge toward ordinary starts. Check the policy test action counts: repeated Hold is a policy decision, not a stopped test. Policies trained before the mount-angle measurement correction must be retrained; incompatible saved files are rejected. Evaluate ordinary starts, train longer, and increase difficulty gradually. Compare with raster scanning. Do not treat a few updates or a higher shaped reward as proof of general target search.</p></details>
+          <details><summary>My saved policy is incompatible or my policy disappeared</summary><p>Restore the original rig, joint mapping, limits and task settings before loading. Initialization, validation, mission/robot/mode changes and page reload clear the in-memory session. Save useful policies before those actions. Clear in Event Stream removes log text only.</p></details>
+          <p class="help-note">This lab currently models a fixed base, stationary targets and a simplified sensor ray. Sensor noise, latency, broader generalization and transfer to a physical robot still need validation. Training or loading a policy does not upload anything to the controller.</p>
+        </section>
+      </div>
     </div>
     <div class="panel" id="shopPanel" role="tabpanel" aria-labelledby="shopTab" hidden>
       <section class="shop-content">
@@ -419,10 +653,29 @@
   <script src="./camera-renderer.js" defer></script>
   <script src="./component-panels.js" defer></script>
   <script src="./physics.js" defer></script>
+  <script src="./simulated-sensor.js" defer></script>
   <script src="./metrics.js" defer></script>
   <script src="./dialog.js" defer></script>
   <script src="./power-meters.js" defer></script>
+  <script src="./ai-rig.js" defer></script>
   <script src="./app.js" defer></script>
+  <script src="./ai-runtime.js" defer></script>
+  <script src="./ai-task.js" defer></script>
+  <script src="./ai-policy.js" defer></script>
+  <script src="./ai-reward.js" defer></script>
+  <script src="./ai-environment.js" defer></script>
+  <script src="./ai-view.js" defer></script>
+  <script src="./ai-baseline.js" defer></script>
+  <script src="./ai-curriculum.js" defer></script>
+  <script src="./ai-evaluation.js" defer></script>
+  <script src="./ai-ppo.js" defer></script>
+  <script src="./ai-training.js" defer></script>
+  <script src="./ai-worker-client.js" defer></script>
+  <script src="./ai-test-progress.js" defer></script>
+  <script src="./ai-convergence.js" defer></script>
+  <script src="./ai-auto-training.js" defer></script>
+  <script src="./ai-learning.js" defer></script>
+  <script src="./ai-layout.js" defer></script>
   <script src="./shop.js" defer></script>
 </body>
 

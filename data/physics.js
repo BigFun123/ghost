@@ -40,7 +40,7 @@
     const tx = 2 * (q.y * z - q.z * y), ty = 2 * (q.z * x - q.x * z), tz = 2 * (q.x * y - q.y * x);
     return [x + q.w * tx + q.y * tz - q.z * ty, y + q.w * ty + q.z * tx - q.x * tz, z + q.w * tz + q.x * ty - q.y * tx];
   }
-  function create(RAPIER) {
+  function create(RAPIER, { fixedBaseIndex = null } = {}) {
     const world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
     world.timestep = 1 / 120;
     // Robot parts are centimetre-sized; the default metre-scale contact slop is too large.
@@ -120,8 +120,9 @@
             const root = find(id);
             if (!groups.has(root)) {
               const center = vector(poses.get(root).center);
-              const body = world.createRigidBody(RAPIER.RigidBodyDesc.dynamic()
-                .setTranslation(center.x, center.y, center.z)
+              const descriptor = fixedBaseIndex !== null && root === find(key(fixedBaseIndex, "body"))
+                ? RAPIER.RigidBodyDesc.fixed() : RAPIER.RigidBodyDesc.dynamic();
+              const body = world.createRigidBody(descriptor.setTranslation(center.x, center.y, center.z)
                 .setLinearDamping(0.05).setAngularDamping(0.1).setCcdEnabled(true));
               groups.set(root, { body, center, shapes: 0 }); robot.push({ body });
             }
@@ -174,7 +175,7 @@
             const anchor = group => ({ x: pivot.x - group.center.x, y: pivot.y - group.center.y, z: pivot.z - group.center.z });
             // All compound bodies start with identity rotation, so the same world
             // axis is a valid local hinge axis on both connected bodies.
-            const axis = { x: node.body.axes[1][0], y: node.body.axes[1][1], z: node.body.axes[1][2] };
+            const axis = { x: node[fixedSide].axes[1][0], y: node[fixedSide].axes[1][1], z: node[fixedSide].axes[1][2] };
             const anchor1 = anchor(base.group), anchor2 = anchor(rotating.group);
             const joint = world.createImpulseJoint(RAPIER.JointData.revolute(anchor1, anchor2, axis), base.body, rotating.body, true);
             joint.setContactsEnabled(false);
@@ -224,7 +225,7 @@
         }
         motors.forEach(motor => {
           const { body, moving, index } = motor;
-          const node = nodes[index];
+          const node = nodes.find(node => node.index === index);
           const powered = !!node.enabled;
           if (motor.powered !== powered) {
             // Replace the joint on power transitions. An unpowered hinge has no
@@ -232,7 +233,11 @@
             world.removeImpulseJoint(motor.joint, true);
             motor.joint = world.createImpulseJoint(RAPIER.JointData.revolute(motor.anchor1, motor.anchor2, motor.axis), body, moving, true);
             motor.joint.setContactsEnabled(false);
-            if (!node.continuous) motor.joint.setLimits(-Math.PI / 2 - motor.reference, Math.PI / 2 - motor.reference);
+            if (!node.continuous) {
+              const sign = node.fixedSide === "shaft" ? -1 : 1;
+              const limits = [node.minTarget ?? -Math.PI / 2, node.maxTarget ?? Math.PI / 2].map(value => value * sign - motor.reference);
+              motor.joint.setLimits(Math.min(...limits), Math.max(...limits));
+            }
             motor.joint.configureMotorModel(RAPIER.MotorModel.ForceBased);
             motor.powered = powered;
             body.wakeUp(); moving.wakeUp();
@@ -252,6 +257,11 @@
         const offset = rotate(point.map(value => value * METRES_PER_UNIT), part.rotation).map((value, axis) => value + part.offset[axis]);
         const local = rotate(offset, part.body.rotation()), p = part.body.translation();
         return [local[0] + p.x, local[1] + p.y, local[2] + p.z].map(value => value / METRES_PER_UNIT);
+      },
+      stepFixed(count = 1) {
+        if (destroyed) throw new Error("Physics world has been disposed.");
+        if (!Number.isInteger(count) || count < 0 || count > 10000) throw new Error("Invalid fixed step count.");
+        for (let i = 0; i < count; i++) world.step(undefined, collisionHooks);
       },
       advance(seconds) {
         if (destroyed) return;

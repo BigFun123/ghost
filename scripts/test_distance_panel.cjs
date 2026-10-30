@@ -1,15 +1,15 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs'), vm = require('node:vm');
-const context = { componentRegistry: { register() {} }, document: { createElement: () => ({ classList: { toggle() {} }, setAttribute() {}, addEventListener(event, fn) { this[event] = fn; }, append(...children) { this.children = children; } }) } };
+const context = { GhostSensor:require('../data/simulated-sensor'), componentRegistry: { register() {} }, document: { createElement: () => ({ classList: { toggle() {} }, setAttribute() {}, addEventListener(event, fn) { this[event] = fn; }, append(...children) { this.children = children; } }) } };
 vm.createContext(context);
 vm.runInContext(fs.readFileSync('data/components/VL53L0X.js', 'utf8'), context);
 let settingsOpened = 0;
 const panel = context.createVL53L0XPanel({ openSettings: () => settingsOpened++ });
 const value = panel.element.children[2], caption = panel.element.children[3];
 const scene = { node: { name: 'Front distance' }, nodes: [], index: 0, surfaces: [], offline: true,
- worldPoint: (_, i, point) => point, rayDistance: () => 123.45 };
+ worldPoint: (_, i, point) => point, measureSensor: () => ({ origin:[0,2,3.1], direction:[0,0,1], valid:true, distanceMm:123.45, hit:{name:"Test surface"} }) };
 panel.update(scene); assert.equal(value.textContent, '123.5 mm');
-panel.update({ ...scene, rayDistance: () => null }); assert.equal(value.textContent, 'No hit');
+panel.update({ ...scene, measureSensor: () => ({origin:[0,2,3.1],direction:[0,0,1],valid:false,distanceMm:null,hit:null}) }); assert.equal(value.textContent, 'No hit');
 const live = { ...scene, offline: false, telemetryAgeMs: 0, sensors: { vl53l0x: { ready: true, valid: true, distanceMm: 456 } } };
 panel.update(live); assert.equal(value.textContent, '456 mm'); assert.match(caption.textContent, /Physical/);
 panel.update({ ...live, telemetryAgeMs: 3001 }); assert.equal(value.textContent, 'Stale reading');
@@ -32,3 +32,20 @@ assert.equal(scan.points.at(-1)[2], 2007.1);
 draw.click(); panel.update(live); assert.equal(scan.points.length, 2000);
 clear.click(); assert.equal(scan.points.length, 0);
 console.log('Scan capture passed: world endpoints, 2000-point FIFO, pause and clear.');
+scene.node.distanceMultiplier=1.25;
+panel.update(live);assert.equal(value.textContent,'570 mm','live panel uses calibrated distance');
+panel.update(scene);assert.equal(value.textContent,'123.5 mm','simulation keeps geometric distance');
+draw.click();
+panel.update({...live,sensors:{vl53l0x:{ready:true,valid:true,distanceMm:100}}});
+assert.equal(scan.points.at(-1)[2],128.1,'captured points use calibrated distance');
+const host={append(group){this.group=group;}};
+let changed=0;
+context.renderVL53L0XSettings({node:scene.node,host,editing:true,change(){changed++;}});
+const input=host.group.children[0].children[0];
+input.setCustomValidity=function(message){this.error=message;};input.reportValidity=()=>{};
+input.value='2';input.change();
+assert.equal(scene.node.distanceMultiplier,2);assert.equal(changed,1);assert.equal(scan.points.length,0);
+for(const invalid of ['', '0','-1','NaN','1001']) {
+  input.value=invalid;input.change();assert.equal(scene.node.distanceMultiplier,2);assert.equal(changed,1);
+}
+console.log('Distance calibration passed: settings validation, panel, beam capture and simulation isolation.');

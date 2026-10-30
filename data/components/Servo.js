@@ -16,9 +16,11 @@ const servoComponentBehavior = {
 // A transform-only attachment point; the owning servo renders both pieces.
 componentRegistry.register({
   objectType: "Servo Shaft", selectable: false,
-  capabilities: ["servoShaft"],
+  capabilities: ["servoShaft", "shaftMount"],
   draw() {},
   getPhysics() { return { real: false, massGrams: 0 }; },
   getPower() { return { min: 0, max: 0 }; },
-  parentSide() { return "shaft"; }
+  parentSide({ parent, nodes, registry }) {
+    return registry.attachment(nodes, nodes.indexOf(parent)).fixedSide === "shaft" ? "body" : "shaft";
+  }
 });

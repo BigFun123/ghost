@@ -5,3 +5,6 @@
 .vscode/ipch
 include/WifiCredentials.h
 .local-https/
+
+# Local trained-policy artifacts (outside controller filesystem assets).
+/training/

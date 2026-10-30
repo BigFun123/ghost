@@ -9,6 +9,7 @@ function loadComponentRegistry(context = {}) {
   for (const match of html.matchAll(/<script src="\.\/components\/([A-Za-z0-9_.-]+\.js)"[^>]*><\/script>/g)) {
     vm.runInContext(fs.readFileSync(path.join(data, 'components', match[1]), 'utf8'), context, { filename: match[1] });
   }
+  vm.runInContext(fs.readFileSync(path.join(data, 'ai-rig.js'), 'utf8'), context, { filename: 'ai-rig.js' });
   return vm.runInContext('componentRegistry', context);
 }
 

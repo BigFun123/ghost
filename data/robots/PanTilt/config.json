@@ -28,21 +28,21 @@
       "shopProductId": "servo-sg90",
       "model": "micro",
       "type": "SG90",
-      "name": "Servo 1",
+      "name": "PanBase",
       "objectType": "Servo",
-      "parent": "Robot",
+      "parent": "Servo 1 Shaft",
       "position": {
         "x": 0,
-        "y": 10,
+        "y": 0,
         "z": 0
       },
       "rotation": {
         "x": 0,
         "y": 0,
-        "z": 180
+        "z": 0
       },
       "address": "0x41",
-      "channel": 0,
+      "channel": 15,
       "enabled": true,
       "reversed": false,
       "continuous": false,
@@ -60,16 +60,16 @@
     {
       "name": "Servo 1 Shaft",
       "objectType": "Servo Shaft",
-      "parent": "Servo 1",
+      "parent": "Robot",
       "position": {
         "x": 0,
-        "y": 0,
+        "y": 15,
         "z": 0
       },
       "rotation": {
         "x": 0,
         "y": 0,
-        "z": 0
+        "z": -180
       },
       "minPowerWatts": null,
       "maxPowerWatts": null,
@@ -85,21 +85,21 @@
       "shopProductId": "servo-sg90",
       "model": "micro",
       "type": "SG90",
-      "name": "Servo 4",
+      "name": "TiltHead",
       "objectType": "Servo",
-      "parent": "Servo 1 Shaft",
+      "parent": "Servo 4 Shaft",
       "position": {
         "x": 0,
-        "y": -30,
-        "z": 10
-      },
-      "rotation": {
-        "x": 90,
         "y": 0,
         "z": 0
       },
+      "rotation": {
+        "x": 0,
+        "y": -90,
+        "z": 0
+      },
       "address": "0x41",
-      "channel": 1,
+      "channel": 14,
       "enabled": true,
       "reversed": false,
       "continuous": false,
@@ -117,14 +117,14 @@
     {
       "name": "Servo 4 Shaft",
       "objectType": "Servo Shaft",
-      "parent": "Servo 4",
+      "parent": "PanBase",
       "position": {
         "x": 0,
-        "y": 0,
+        "y": -40,
         "z": 0
       },
       "rotation": {
-        "x": 0,
+        "x": 90,
         "y": 0,
         "z": 0
       },
@@ -142,21 +142,22 @@
       "shopProductId": null,
       "name": "VL53L0X V2 Time of Flight Sensor 1",
       "objectType": "VL53L0X V2 Time of Flight Sensor",
-      "parent": "Servo 4 Shaft",
+      "parent": "TiltHead",
       "position": {
-        "x": -10,
-        "y": -15,
-        "z": 20
+        "x": 10,
+        "y": -2,
+        "z": 10
       },
       "rotation": {
         "x": 0,
-        "y": -90,
+        "y": 0,
         "z": 0
       },
       "powerVoltageVolts": null,
       "idleCurrentAmps": null,
       "runningCurrentAmps": null,
-      "peakCurrentAmps": null
+      "peakCurrentAmps": null,
+      "distanceMultiplier": 1
     },
     {
       "minPowerWatts": null,
@@ -172,7 +173,7 @@
       },
       "rotation": {
         "x": 0,
-        "y": 0,
+        "y": 90,
         "z": 0
       },
       "powerVoltageVolts": null,
@@ -180,15 +181,59 @@
       "runningCurrentAmps": null,
       "peakCurrentAmps": null,
       "i2cAddress": 65
+    },
+    {
+      "minPowerWatts": null,
+      "maxPowerWatts": null,
+      "shopProductId": null,
+      "name": "Target 1",
+      "objectType": "Target",
+      "parent": null,
+      "position": {
+        "x": 150,
+        "y": 40,
+        "z": 0
+      },
+      "rotation": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "powerVoltageVolts": null,
+      "idleCurrentAmps": null,
+      "runningCurrentAmps": null,
+      "peakCurrentAmps": null
+    },
+    {
+      "minPowerWatts": null,
+      "maxPowerWatts": null,
+      "shopProductId": null,
+      "name": "Target 2",
+      "objectType": "Target",
+      "parent": null,
+      "position": {
+        "x": 0,
+        "y": 5,
+        "z": -80
+      },
+      "rotation": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "powerVoltageVolts": null,
+      "idleCurrentAmps": null,
+      "runningCurrentAmps": null,
+      "peakCurrentAmps": null
     }
   ],
   "camera": {
     "yaw": -0.6,
     "pitch": 0.45,
     "roll": 0,
-    "zoom": 3.012546415231062,
-    "panX": -60,
-    "panY": 0,
+    "zoom": 1.50946530104016,
+    "panX": 100,
+    "panY": 5,
     "panZ": 0,
     "perspective": false,
     "showGrid": true,
