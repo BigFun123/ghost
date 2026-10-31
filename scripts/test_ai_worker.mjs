@@ -12,20 +12,25 @@ function workerFactory(){
 }
 test('real worker trains, pauses, stops, round-trips policies and rejects incompatible data without losing weights',async()=>{
   const {nodes,task}=fixture();task.episodeSeconds=1;
-  const client=GhostLearningWorker.create({workerFactory});
+  const surfaces=[];
+  const client=GhostLearningWorker.create({workerFactory,onWeights:data=>surfaces.push(data)});
   try{
     const runtimeLogs=[];
     const runtime=await client.request('init',{nodes,task,componentFiles,backend:'auto'},(event,data)=>{if(event==='log')runtimeLogs.push(data);});
     assert.equal(runtime.execution,'Web Worker');assert.equal(runtime.backend,'cpu');assert(runtimeLogs.some(message=>message.includes('webgl unavailable')));
     const initialTensors=(await client.request('inspect')).tensors;
     await client.request('create',{seed:17});const vector=Array(29).fill(.1);
+    const initialSurface=surfaces.at(-1);assert.deepEqual(initialSurface.matrices.map(m=>m.shape),[[29,64],[64,64],[64,5],[64,1]]);
     const before=await client.request('predict',{vector});
-    let frames=0;
-    await client.request('train',{stageId:'nearby',updates:1,rolloutSteps:16,warm:true,progressive:true},event=>{if(event==='frame')frames++;});assert(frames>0);
+    let frames=0,parallelFrame=null;
+    await client.request('train',{stageId:'nearby',updates:1,rolloutSteps:16,environmentCount:16,warm:true,progressive:true},(event,data)=>{if(event==='frame'){frames++;parallelFrame=data;}});assert(frames>0);assert.equal(parallelFrame.replicas.length,16);assert.equal(parallelFrame.environmentCount,16);
+    const trainedSurface=surfaces.at(-1);assert.equal(trainedSurface.updates,1);assert.notDeepEqual(trainedSurface.matrices[0].values,initialSurface.matrices[0].values);
+    const surfaceCount=surfaces.length;
     const after=await client.request('predict',{vector});assert.notDeepEqual(after,before);
     const optimizerSteps=(await client.request('inspect')).policy.optimizerSteps;
     let testFrames=0;
     const tested=await client.request('test',{seed:42,angles:task.joints.map(joint=>joint.startup)},(event,frame)=>{if(event==='frame'){testFrames++;assert(frame.phase==='reset'?frame.action===null:Number.isInteger(frame.action));}});
+    assert.equal(surfaces.length,surfaceCount,'Frozen tests do not emit changing weights');
     assert.equal(tested.episodes.length,1);assert(testFrames>0);assert.deepEqual(await client.request('predict',{vector}),after);
     assert.equal((await client.request('inspect')).policy.optimizerSteps,optimizerSteps);
     await assert.rejects(client.request('test',{seed:42,angles:[-999,90]}),/joint limits/);
@@ -33,7 +38,8 @@ test('real worker trains, pauses, stops, round-trips policies and rejects incomp
     const stoppedTest=await client.request('test',{seed:43,angles:task.joints.map(joint=>joint.startup)},event=>{if(event==='frame'&&!stopTest)stopTest=client.request('stop');});
     await stopTest;assert(stoppedTest.cancelled);assert.equal(stoppedTest.episodes.length,0);
     assert.deepEqual(await client.request('predict',{vector}),after);
-    const record=JSON.parse(JSON.stringify(await client.request('save')));assert.equal(record.training.lastCompletedUpdate.progressive,true);assert.equal(record.training.lastCompletedUpdate.curriculum.level,0);
+    const record=JSON.parse(JSON.stringify(await client.request('save')));
+    assert.deepEqual(trainedSurface.matrices.map(({shape,values})=>({shape,values})),record.network.weights.filter(w=>w.shape.length===2),'Surface contains the actual saved policy kernels');assert.equal(record.training.lastCompletedUpdate.progressive,true);assert.equal(record.training.lastCompletedUpdate.curriculum.level,0);
     const evaluation=await client.request('evaluate',{stageId:'nearby',count:1});
     const withEvaluation=await client.request('save');assert.equal(withEvaluation.evaluation.episodes.length,1);assert(Number.isFinite(withEvaluation.evaluation.summary.falseHoldAttempts));assert(withEvaluation.evaluation.comparisonComplete);assert.deepEqual(withEvaluation.evaluation.baseline.episodes.map(episode=>episode.seed),evaluation.episodes.map(episode=>episode.seed));
     const monitorEvents=[];
@@ -54,7 +60,7 @@ test('real worker trains, pauses, stops, round-trips policies and rejects incomp
     await assert.rejects(client.request('load',{record}),/Stop training/);
     await client.request('resume');await client.request('stop');assert.equal((await run).cancelled,true);
     assert.equal((await client.request('save')).evaluation,null);
-    await client.request('discard');assert.equal((await client.request('inspect')).tensors,initialTensors);
+    await client.request('discard');assert.equal(surfaces.at(-1),null);assert.equal((await client.request('inspect')).tensors,initialTensors);
     await client.request('load',{record});assert.deepEqual(await client.request('predict',{vector}),after);
     assert.deepEqual(withEvaluation.evaluation.baseline.episodes[0].targetWorld,evaluation.episodes[0].targetWorld);assert.deepEqual(withEvaluation.evaluation.baseline.episodes[0].initialJointAnglesDegrees,evaluation.episodes[0].initialJointAnglesDegrees);
     const reloadedEvaluation=await client.request('evaluate',{stageId:'nearby',count:1});assert.deepEqual(reloadedEvaluation.episodes,evaluation.episodes);
@@ -78,4 +84,17 @@ test('terminating a worker rejects pending runs and ignores late messages',async
   const pending=client.request('train',{},()=>events++),rejection=assert.rejects(pending,/stopped/);
   client.dispose();client.dispose();transport.onmessage({data:{id:1,event:'frame',data:{}}});await rejection;
   assert.equal(events,0);assert.equal(terminated,1);await assert.rejects(client.request('init'),/stopped/);
+});
+
+test('target-only changes retain predictions and optimizer, permit tests, and invalidate old evidence',async()=>{
+ const {nodes,task}=fixture();task.episodeSeconds=1;const client=GhostLearningWorker.create({workerFactory});
+ try{
+  await client.request('init',{nodes,task,componentFiles,backend:'cpu'});await client.request('create',{seed:42});await client.request('train',{stageId:'nearby',updates:1,rolloutSteps:16,warm:true});
+  const vector=Array(29).fill(.1),before=await client.request('predict',{vector}),original=await client.request('save'),optimizer=(await client.request('inspect')).policy.optimizerSteps;
+  const nextNodes=structuredClone(nodes),targetIndex=nodes.findIndex((node,index)=>node.objectType==='Target'&&index!==task.targetIndex);assert(targetIndex>=0);nextNodes[task.targetIndex].position=[500,100,500];nextNodes[targetIndex].position=[...task.targetWorld];const nextTask={...task,targetIndex};
+  const changed=await client.request('retarget',{nodes:nextNodes,task:nextTask});assert(changed.targetChanged);assert.equal(changed.optimizerSteps,optimizer);assert.deepEqual(await client.request('predict',{vector}),before);assert.equal((await client.request('save')).evaluation,null);assert.match(changed.convergence.status,/Stale/);
+  const tested=await client.request('test',{seed:42,angles:task.joints.map(j=>j.startup)});assert.equal(tested.episodes.length,1);assert.equal(tested.policy.completedUpdates,original.training.completedUpdates);
+  const wrong=structuredClone(nextTask);wrong.joints[0].max--;await assert.rejects(client.request('retarget',{nodes:nextNodes,task:wrong}),/rig or policy format changed/);assert.deepEqual(await client.request('predict',{vector}),before);
+  const loaded=await client.request('load',{record:original});assert(loaded.targetChanged);assert.equal(loaded.optimizerSteps,0);assert.deepEqual(await client.request('predict',{vector}),before);assert.equal((await client.request('save')).evaluation,null);
+ }finally{client.dispose();}
 });

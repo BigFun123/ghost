@@ -7,7 +7,7 @@
     for(let i=rows.length-1;i>=0;i--){const row=rows[i];
       if(![row.reward,row.value,row.nextValue].every(Number.isFinite))throw new Error('Non-finite PPO rollout.');
       const delta=row.reward+gamma*(row.terminated?0:row.nextValue)-row.value;
-      raw[i]=delta+gamma*lambda*(row.terminated||row.truncated?0:nextAdvantage);returns[i]=raw[i]+row.value;nextAdvantage=raw[i];
+      raw[i]=delta+gamma*lambda*(row.terminated||row.truncated||row.traceEnd?0:nextAdvantage);returns[i]=raw[i]+row.value;nextAdvantage=raw[i];
     }
     const mean=raw.reduce((a,b)=>a+b,0)/raw.length,variance=raw.reduce((a,b)=>a+(b-mean)**2,0)/raw.length;
     return {raw,returns,normalized:raw.map(value=>(value-mean)/Math.sqrt(variance+1e-8))};
@@ -29,37 +29,53 @@
       assertAlive();if(vector.length!==inputSize||!vector.every(Number.isFinite))throw new Error('PPO observation schema mismatch.');
       return tf.tidy(()=>{const [logits,value]=model.predict(tf.tensor2d([vector]));return {probabilities:Array.from(tf.softmax(logits).dataSync()),value:value.dataSync()[0]};});
     }
+    function predictBatch(vectors){
+      assertAlive();if(!Array.isArray(vectors)||!vectors.length||vectors.some(vector=>vector.length!==inputSize||!vector.every(Number.isFinite)))throw new Error('PPO batch observation schema mismatch.');
+      return tf.tidy(()=>{const [logits,values]=model.predict(tf.tensor2d(vectors)),packed=tf.concat([tf.softmax(logits),values],1).arraySync();return packed.map(row=>({probabilities:row.slice(0,actionCount),value:row[actionCount]}));});
+    }
+    function choose(prediction,deterministic){
+      let action=0;
+      if(deterministic)action=prediction.probabilities.indexOf(Math.max(...prediction.probabilities));
+      else{let sample=rng();action=actionCount-1;for(let i=0;i<actionCount;i++){sample-=prediction.probabilities[i];if(sample<=0){action=i;break;}}}
+      return {action,value:prediction.value,logProbability:Math.log(Math.max(1e-12,prediction.probabilities[action]))};
+    }
     function batchUpdate(rows,indices,gae){
       return tf.tidy(()=>{
         const xs=tf.tensor2d(indices.map(i=>rows[i].observation)),oneHot=tf.oneHot(tf.tensor1d(indices.map(i=>rows[i].action),'int32'),actionCount);
         const oldLog=tf.tensor1d(indices.map(i=>rows[i].logProbability)),advs=tf.tensor1d(indices.map(i=>gae.normalized[i])),targets=tf.tensor1d(indices.map(i=>gae.returns[i]));
-        let metrics;
+        let metricsTensor;
+        try{
         const {value,grads}=tf.variableGrads(()=>{
           const [logits,predicted]=model.apply(xs,{training:true}),logs=tf.logSoftmax(logits),chosen=logs.mul(oneHot).sum(1),logRatio=chosen.sub(oldLog),ratio=logRatio.exp();
           const policyLoss=tf.minimum(ratio.mul(advs),ratio.clipByValue(1-config.clip,1+config.clip).mul(advs)).mean().neg();
           const valueLoss=targets.sub(predicted.reshape([-1])).square().mean().mul(.5);
           const entropy=logs.exp().mul(logs).sum(1).mean().neg();
           const kl=ratio.sub(1).sub(logRatio).mean(),clipFraction=ratio.sub(1).abs().greater(config.clip).toFloat().mean();
-          metrics={policyLoss:policyLoss.dataSync()[0],valueLoss:valueLoss.dataSync()[0],entropy:entropy.dataSync()[0],approxKL:kl.dataSync()[0],clipFraction:clipFraction.dataSync()[0]};
+          metricsTensor=tf.keep(tf.stack([policyLoss,valueLoss,entropy,kl,clipFraction]));
           return policyLoss.add(valueLoss.mul(config.valueCoefficient)).sub(entropy.mul(config.entropyCoefficient));
         },model.trainableWeights.map(weight=>weight.val));
-        const norm=tf.addN(Object.values(grads).map(gradient=>gradient.square().sum())).sqrt().dataSync()[0];
-        const loss=value.dataSync()[0];if(![loss,norm,...Object.values(metrics)].every(Number.isFinite))throw new Error('Non-finite PPO loss or gradient; training stopped.');
+        const normTensor=tf.addN(Object.values(grads).map(gradient=>gradient.square().sum())).sqrt();
+        const packed=Array.from(tf.concat([metricsTensor,value.reshape([1]),normTensor.reshape([1])]).dataSync());
+        if(!packed.every(Number.isFinite))throw new Error('Non-finite PPO loss or gradient; training stopped.');
+        const [policyLoss,valueLoss,entropy,approxKL,clipFraction,loss,norm]=packed,metrics={policyLoss,valueLoss,entropy,approxKL,clipFraction};
         const scale=Math.min(1,config.maxGradientNorm/(norm+1e-8));
         optimizer.applyGradients(Object.fromEntries(Object.entries(grads).map(([name,gradient])=>[name,gradient.mul(scale)])));optimizerSteps++;
         return {...metrics,loss,gradientNorm:norm,clippedGradientNorm:norm*scale};
+        }finally{metricsTensor?.dispose();}
       });
     }
     return {
       schema:Object.freeze({version:1,inputSize,actionCount,hiddenUnits:[64,64],seed}),settings:Object.freeze({...config}),
       predict,
       value(vector){return predict(vector).value;},
-      act(vector,deterministic=false){
-        const prediction=predict(vector);let action=0;
-        if(deterministic)action=prediction.probabilities.indexOf(Math.max(...prediction.probabilities));
-        else{let sample=rng();action=actionCount-1;for(let i=0;i<actionCount;i++){sample-=prediction.probabilities[i];if(sample<=0){action=i;break;}}}
-        return {action,value:prediction.value,logProbability:Math.log(Math.max(1e-12,prediction.probabilities[action]))};
+      predictBatch,
+      actBatch(vectors,deterministic=false){return predictBatch(vectors).map(prediction=>choose(prediction,deterministic));},
+      valuesBatch(vectors){
+        assertAlive();if(!vectors.length)return [];
+        if(vectors.some(vector=>vector.length!==inputSize||!vector.every(Number.isFinite)))throw new Error('PPO batch observation schema mismatch.');
+        return tf.tidy(()=>{const [,values]=model.predict(tf.tensor2d(vectors));return Array.from(values.dataSync());});
       },
+      act(vector,deterministic=false){return choose(predict(vector),deterministic);},
       async update(rows,{shouldStop=()=>false,yieldControl=async()=>{}}={}){
         assertAlive();if(updating)throw new Error('PPO update already running.');
         if(!rows.length||rows.some(row=>row.observation.length!==inputSize||!row.observation.every(Number.isFinite)||!Number.isInteger(row.action)||row.action<0||row.action>=actionCount||!Number.isFinite(row.logProbability)))throw new Error('Invalid PPO rollout data.');
@@ -74,6 +90,13 @@
           }
           return {cancelled:false,batches,...last};
         }finally{updating=false;}
+      },
+      weightMatrices(){
+        assertAlive();if(updating)throw new Error('Wait for the optimizer before reading weights.');
+        return model.weights.filter(weight=>weight.shape.length===2).map((weight,index)=>({
+          name:['Observation to hidden 1','Hidden 1 to hidden 2','Hidden 2 to actions','Hidden 2 to value'][index],
+          shape:[...weight.shape],values:Array.from(weight.read().dataSync())
+        }));
       },
       exportWeights(){
         assertAlive();if(updating)throw new Error('Wait for the optimizer to stop before saving.');

@@ -9,7 +9,7 @@ const control = { timer: null, pendingCommand: { angle: 180 }, commandedMotion: 
 const context = { document: { getElementById: id => id === 'previewOffline' ? button : reboot },
   offlineSimulation: false, controllerRebooting: false, sensorTelemetry: {}, commandModeRevision: 0,
   servoControls: [control], servoPreview: null, clearTimeout, GhostLearning: { stopEnvironment() { stops++; } },
-  setText() {}, stopSweep() {}, stopSequence() {}, updateServoPositionTrail() {}, syncServoPower() {},
+  setControllerOnline() {}, setText() {}, stopSweep() {}, stopSequence() {}, updateServoPositionTrail() {}, syncServoPower() {},
   syncMasterPower() {}, setServoPlaybackLock() {}, updateSequencerControls() {}, drawServoPreview() {}, refresh() { refreshes++; } };
 vm.createContext(context);
 vm.runInContext(source.slice(source.indexOf('document.getElementById("previewOffline").addEventListener("click"'), source.indexOf('function simulateServoRequest(')), context);

@@ -2,9 +2,16 @@
 importScripts('./ai-rig.js','./physics.js','./simulated-sensor.js','./ai-task.js','./ai-policy.js','./ai-reward.js','./ai-environment.js',
   './ai-baseline.js','./ai-curriculum.js','./ai-evaluation.js','./ai-ppo.js','./ai-training.js','./ai-acquisition.js','./ai-runtime.js','./ai-policy-file.js','./ai-convergence.js');
 (function(){
-  let options=null,context=null,agent=null,active=null,initializing=false,completedUpdates=0,lastEvaluation=null,lastTraining=null,acquisition=null,acquisitionStage=null,monitor=GhostConvergence.create(),revision=0,best=null,trainingSteps=0,finalBankRuns=0;
+  let options=null,context=null,agent=null,active=null,initializing=false,completedUpdates=0,lastEvaluation=null,lastTraining=null,acquisition=null,acquisitionStage=null,monitor=GhostConvergence.create(),revision=0,best=null,trainingSteps=0,finalBankRuns=0,trainingCaseIndex=0;
   const emit=(id,event,data)=>postMessage({id,event,data});
   const status=()=>agent?{schema:agent.schema,settings:agent.settings,completedUpdates,...agent.inspect()}:null;
+  let surfaceAgent=null,surfaceStep=-1,surfaceUpdate=-1;
+  function sendWeights(id,reset=false){
+    const steps=agent?.inspect().optimizerSteps??0;
+    if(agent===surfaceAgent&&steps===surfaceStep&&completedUpdates===surfaceUpdate)return;
+    surfaceAgent=agent;surfaceStep=steps;surfaceUpdate=completedUpdates;
+    emit(id,'weights',agent?{updates:completedUpdates,optimizerSteps:steps,reset,matrices:agent.weightMatrices()}:null);
+  }
   const idle=()=>{if(!options)throw new Error('Initialize the worker first.');if(active)throw new Error('Stop training/evaluation before changing policy data.');};
   async function initialize(payload,id){
     if(initializing||options)throw new Error('Worker already initialized.');initializing=true;
@@ -29,20 +36,21 @@ importScripts('./ai-rig.js','./physics.js','./simulated-sensor.js','./ai-task.js
   }
   async function run(type,payload,id){
     idle();if(!agent)throw new Error('Create or load a policy first.');
-    const state={paused:false,cancelled:false};active=state;let lastFrame=-Infinity,controlTicks=0;
-    const checkpoint=async()=>{if(type!=='test'&&!state.paused&&++controlTicks%8!==0)return;do{await new Promise(resolve=>setTimeout(resolve,state.paused?30:type==='test'?50:0));}while(state.paused&&!state.cancelled);};
+    const state={paused:false,cancelled:false};active=state;let lastFrame=-Infinity,lastYield=Date.now();
+    const checkpoint=async()=>{if(type!=='test'&&!state.paused&&Date.now()-lastYield<8)return;do{await new Promise(resolve=>setTimeout(resolve,state.paused?30:type==='test'?50:0));}while(state.paused&&!state.cancelled);lastYield=Date.now();};
     const stageId=payload.stageId;
-    const makeCase=(index,split,warm)=>GhostPPOTraining.prepareCase(GhostLearningCurriculum.makeCase({stageId,split,index:index%GhostLearningCurriculum.seeds[split].length,...options}),warm);
-    const onFrame=frame=>{const now=Date.now();if(frame.phase==='reset'||frame.phase==='first-action'||now-lastFrame>=100||frame.result.terminated||frame.result.truncated){lastFrame=now;emit(id,'frame',frame);}};
+    const makeCase=(index,split,warm)=>GhostPPOTraining.prepareCase(GhostLearningCurriculum.makeCase({stageId,split,index:index%GhostLearningCurriculum.seeds[split].length,...options,...(split==='training'&&index>=5?{seedOverride:0x40000000+((Math.imul(index+1,2654435761)>>>0)%0x3fffffff)}:{})}),warm);
+    const displayInterval=type==='train'?(payload.environmentCount>=256?250:payload.environmentCount>=64?100:50):100;
+    const onFrame=frame=>{const now=Date.now();if(frame.phase==='reset'||frame.phase==='first-action'||now-lastFrame>=displayInterval||frame.result.terminated||frame.result.truncated){lastFrame=now;emit(id,'frame',frame);}};
     const shared={agent,onFrame,shouldStop:()=>state.cancelled,yieldControl:checkpoint,createEnvironment:scenario=>GhostLearningEnvironment.create({...options,task:scenario.task})};
     try{
       if(type==='train'){
         lastEvaluation=null;revision++;monitor.stale();emit(id,'convergence',monitor.state());
         if(payload.progressive&&(!acquisition||acquisitionStage!==stageId)){acquisition=GhostAcquisition.create();acquisitionStage=stageId;}
         const trainingCase=index=>{const scenario=makeCase(index,'training',payload.progressive?false:payload.warm);return payload.progressive?acquisition.prepare(scenario):scenario;};
-        const outcome=await GhostPPOTraining.train({...shared,updates:payload.updates,rolloutSteps:payload.rolloutSteps,makeCase:trainingCase,
-          onEpisode:episode=>{emit(id,'episode',{...episode,curriculum:payload.progressive?acquisition.status():null});},onUpdate:async metrics=>{
-            completedUpdates++;
+        const outcome=await GhostPPOTraining.train({...shared,updates:payload.updates,rolloutSteps:payload.rolloutSteps,environmentCount:payload.environmentCount??1,makeCase:()=>trainingCase(trainingCaseIndex++),shouldSnapshot:()=>Date.now()-lastFrame>=displayInterval,onPhase:message=>emit(id,'training-phase',message),
+          onEpisode:episode=>{if(payload.environmentCount>=64&&episode.environmentIndex!==0)return;emit(id,'episode',{...episode,curriculum:payload.progressive?acquisition.status():null});},onUpdate:async metrics=>{
+            completedUpdates++;sendWeights(id);
             if(payload.progressive&&!state.cancelled){
               emit(id,'curriculum-check','Checking acquisition with frozen training-case probes...');
               const level=acquisition.status().level;
@@ -115,21 +123,29 @@ importScripts('./ai-rig.js','./physics.js','./simulated-sensor.js','./ai-task.js
       else{
         idle();
         if(type==='create'){if(!agent)agent=GhostPPO.create({tf,seed:payload.seed});result=status();}
-        else if(type==='discard'){agent?.dispose();agent=null;completedUpdates=0;lastTraining=lastEvaluation=null;acquisition=null;acquisitionStage=null;monitor.clear();best=null;revision++;trainingSteps=0;finalBankRuns=0;result=null;}
+        else if(type==='discard'){agent?.dispose();agent=null;completedUpdates=0;lastTraining=lastEvaluation=null;acquisition=null;acquisitionStage=null;monitor.clear();best=null;revision++;trainingSteps=0;finalBankRuns=0;trainingCaseIndex=0;result=null;}
         else if(type==='save'){
           if(!agent)throw new Error('No policy to save.');
           result=payload.best&&best?best.record:GhostPolicyFile.save({agent,context,training:{completedUpdates,trainingSteps,finalBankRuns,optimizerSteps:agent.inspect().optimizerSteps,lastCompletedUpdate:lastTraining,monitoring:monitor.export()},evaluation:lastEvaluation});
         }else if(type==='restore-best'){
           if(!best)throw new Error('No monitored checkpoint is available.');
-          const replacement=GhostPolicyFile.load({tf,record:best.record,context});agent.dispose();agent=replacement;completedUpdates=best.record.training.completedUpdates;trainingSteps=best.record.training.trainingSteps;revision++;monitor.restore(best.record.training.monitoring);acquisition=null;acquisitionStage=null;lastTraining=null;lastEvaluation=best.record.evaluation;result={...status(),convergence:monitor.state()};
+          const replacement=GhostPolicyFile.load({tf,record:best.record,context});agent.dispose();agent=replacement;completedUpdates=best.record.training.completedUpdates;trainingSteps=best.record.training.trainingSteps;revision++;monitor.restore(best.record.training.monitoring);acquisition=null;acquisitionStage=null;lastTraining=null;trainingCaseIndex=0;lastEvaluation=best.record.evaluation;result={...status(),convergence:monitor.state()};
+        }else if(type==='retarget'){
+          if(!agent)throw new Error('No policy to retain.');
+          if(!Array.isArray(payload.nodes)||!Number.isInteger(payload.task?.targetIndex)||payload.nodes[payload.task.targetIndex]?.objectType!=='Target'||!Array.isArray(payload.task.targetWorld)||payload.task.targetWorld.length!==3||!payload.task.targetWorld.every(Number.isFinite))throw new Error('Choose a valid target and finite target position.');
+          const next={...options,nodes:payload.nodes,task:payload.task},nextContext=GhostPolicyFile.compatibility(next);
+          if(!GhostPolicyFile.targetCompatible(context,nextContext))throw new Error('The rig or policy format changed; target-only transfer is unavailable.');
+          options=next;context=nextContext;revision++;lastTraining=lastEvaluation=null;best=null;monitor.clear();acquisition=null;acquisitionStage=null;trainingCaseIndex=0;
+          result={...status(),convergence:{...monitor.state(),status:'Stale / target changed',converged:false},targetChanged:true};
         }else if(type==='load'){
-          const replacement=GhostPolicyFile.load({tf,record:payload.record,context});
+          const replacement=GhostPolicyFile.load({tf,record:payload.record,context,allowTargetChange:true});
           agent?.dispose();agent=replacement;completedUpdates=Number.isSafeInteger(payload.record.training?.completedUpdates)&&payload.record.training.completedUpdates>=0?payload.record.training.completedUpdates:0;
-          acquisition=null;acquisitionStage=null;lastTraining=null;lastEvaluation=payload.record.evaluation??null;revision++;trainingSteps=Number.isSafeInteger(payload.record.training?.trainingSteps)&&payload.record.training.trainingSteps>=0?payload.record.training.trainingSteps:0;finalBankRuns=Number.isSafeInteger(payload.record.training?.finalBankRuns)?Math.max(finalBankRuns,payload.record.training.finalBankRuns):finalBankRuns;best=null;monitor.restore(payload.record.training?.monitoring);result={...status(),convergence:monitor.state()};
+          acquisition=null;acquisitionStage=null;lastTraining=null;trainingCaseIndex=0;lastEvaluation=payload.record.evaluation??null;const targetChanged=JSON.stringify(payload.record.compatibility)!==JSON.stringify(context);if(targetChanged)lastEvaluation=null;revision++;trainingSteps=Number.isSafeInteger(payload.record.training?.trainingSteps)&&payload.record.training.trainingSteps>=0?payload.record.training.trainingSteps:0;finalBankRuns=Number.isSafeInteger(payload.record.training?.finalBankRuns)?Math.max(finalBankRuns,payload.record.training.finalBankRuns):finalBankRuns;best=null;monitor.restore(payload.record.training?.monitoring);if(targetChanged)monitor.clear();result={...status(),targetChanged,convergence:targetChanged?{...monitor.state(),status:'Stale / target changed',converged:false}:monitor.state()};
         }else if(type==='predict'){if(!agent)throw new Error('No policy.');result={...agent.predict(payload.vector),action:agent.act(payload.vector,true).action};}
         else if(type==='inspect')result={policy:status(),tensors:tf.memory().numTensors,active:!!active};
         else throw new Error('Unknown learning worker command.');
       }
+      if(['create','load','restore-best','discard','train'].includes(type))sendWeights(id,['create','load','restore-best'].includes(type));
       postMessage({id,result});
     }catch(error){postMessage({id,error:error.message||String(error)});}
   };

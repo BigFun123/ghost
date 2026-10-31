@@ -1,6 +1,6 @@
 // Request IDs route bounded worker events; terminating rejects pending work and ignores late messages.
 (function(scope){
-  function create({workerFactory,onFatal=()=>{}}={}){
+  function create({workerFactory,onFatal=()=>{},onWeights=()=>{}}={}){
     const worker=workerFactory?workerFactory('./ai-worker.js'):new Worker(new URL('./ai-worker.js',document.baseURI));
     const pending=new Map();let serial=0,disposed=false;
     function dispose(reason='Learning worker stopped.'){
@@ -10,7 +10,7 @@
     worker.onmessage=({data})=>{
       if(disposed)return;
       const request=pending.get(data.id);if(!request)return;
-      if(data.event){request.onEvent?.(data.event,data.data);return;}
+      if(data.event){if(data.event==='weights')onWeights(data.data);request.onEvent?.(data.event,data.data);return;}
       pending.delete(data.id);clearTimeout(request.timeout);
       if(data.error)request.reject(new Error(data.error));else request.resolve(data.result);
     };

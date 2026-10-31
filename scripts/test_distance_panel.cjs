@@ -1,6 +1,6 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs'), vm = require('node:vm');
-const context = { GhostSensor:require('../data/simulated-sensor'), componentRegistry: { register() {} }, document: { createElement: () => ({ classList: { toggle() {} }, setAttribute() {}, addEventListener(event, fn) { this[event] = fn; }, append(...children) { this.children = children; } }) } };
+const context = { GhostSensor:require('../data/simulated-sensor'), componentRegistry: { register() {} }, document: { createElement: () => ({ classList: { toggle() {} }, setAttribute() {}, addEventListener(event, fn) { this[event] = fn; }, append(...children) { this.children = [...(this.children ?? []), ...children]; } }) } };
 vm.createContext(context);
 vm.runInContext(fs.readFileSync('data/components/VL53L0X.js', 'utf8'), context);
 let settingsOpened = 0;
@@ -41,7 +41,7 @@ assert.equal(scan.points.at(-1)[2],128.1,'captured points use calibrated distanc
 const host={append(group){this.group=group;}};
 let changed=0;
 context.renderVL53L0XSettings({node:scene.node,host,editing:true,change(){changed++;}});
-const input=host.group.children[0].children[0];
+const input=host.group.children[0].children[0].children[0];
 input.setCustomValidity=function(message){this.error=message;};input.reportValidity=()=>{};
 input.value='2';input.change();
 assert.equal(scene.node.distanceMultiplier,2);assert.equal(changed,1);assert.equal(scan.points.length,0);
@@ -49,3 +49,29 @@ for(const invalid of ['', '0','-1','NaN','1001']) {
   input.value=invalid;input.change();assert.equal(scene.node.distanceMultiplier,2);assert.equal(changed,1);
 }
 console.log('Distance calibration passed: settings validation, panel, beam capture and simulation isolation.');
+
+let calibration={offline:false,sensor:{ready:true,valid:true,distanceMm:100},telemetryAgeMs:0,direction:[0,-1,0],simulated:{valid:true,distanceMm:300}};
+context.renderVL53L0XSettings({node:scene.node,host,editing:true,change(){},readCalibration:()=>calibration});
+const buttons=host.group.children[0].children;
+buttons[1].click();
+assert.equal(scene.node.calibrationGain1,1.5);
+calibration={...calibration,direction:[0,-0.5,Math.sqrt(0.75)],simulated:{valid:true,distanceMm:600}};
+buttons[2].click();
+assert.equal(scene.node.calibrationGain2,3);
+const sensor=calibration.sensor;
+assert(Math.abs(context.vl53l0xDistance(scene.node,sensor,0,[0,-1,0])-300)<1e-8);
+assert(Math.abs(context.vl53l0xDistance(scene.node,sensor,0,calibration.direction)-600)<1e-8);
+assert(Math.abs(context.vl53l0xDistance(scene.node,sensor,0,[0,-Math.sin(Math.PI/3),0.5])-450)<1e-8);
+assert.equal(context.vl53l0xDistance(scene.node,sensor,4000,calibration.direction),null);
+buttons[3].click();
+assert.equal(context.vl53l0xDistance(scene.node,sensor,0,calibration.direction),200);
+console.log('Simulation calibration passed: capture, angle-dependent range, interpolation, stale reading rejection and reset.');
+const mixerCalibration=panel.element.children[9];
+panel.update({...live,measureSensor:()=>({valid:true,distanceMm:400})});
+mixerCalibration.children[0].click();
+assert(scene.node.calibrationGain1>0,'mixer captures calibration on the same node as Setup');
+assert(mixerCalibration.children[3].textContent.includes('Angle 1 captured'));
+mixerCalibration.children[2].click();
+assert.equal(scene.node.calibrationGain1,0);
+assert.equal(scene.node.calibrationGain2,0);
+console.log('Mixer calibration buttons passed: capture, shared settings and reset.');

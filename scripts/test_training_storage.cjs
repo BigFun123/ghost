@@ -18,7 +18,7 @@ test('local policy saves preserve real weights, never overwrite, and reject malf
     assert.equal((await(await fetch(base+'/api/devserver')).json()).trainingPolicyStorage,true);
     const first=await save({name:'PanTilt',policy});assert.equal(first.status,201);const one=await first.json();
     const second=await save({name:'PanTilt',policy});assert.equal(second.status,201);const two=await second.json();
-    assert.notEqual(one.filename,two.filename);assert.equal(one.path,'training/'+one.filename);
+    assert.equal(one.filename,'PanTilt.json');assert.equal(two.filename,'PanTilt-2.json');assert.notEqual(one.filename,two.filename);assert.equal(one.path,'training/'+one.filename);
     assert.deepEqual(JSON.parse(fs.readFileSync(path.join(training,one.filename),'utf8')),policy);
     assert.equal((await save({name:'../escape',policy})).status,400);
     const bad=structuredClone(policy);bad.network.weights[0].values[0]=1e100;
@@ -31,6 +31,8 @@ test('local policy saves preserve real weights, never overwrite, and reject malf
     assert.equal(fs.readdirSync(training).length,2);
     assert.equal((await fetch(base+'/'+one.path)).status,404,'Artifacts are not served from the controller assets root');
     assert.throws(()=>savePolicy(training,'C:\\escape',policy),/Invalid policy name/);
+    for(const name of ['CON','LPT1.json','../escape',''])assert.throws(()=>savePolicy(training,name,policy),/Invalid policy name/);
+    assert.equal(savePolicy(training,'My policy.json',policy).filename,'My policy.json');
   }finally{
     server.closeAllConnections();await new Promise(resolve=>server.close(resolve));
     assert.equal(path.dirname(path.resolve(root)),workspace);fs.rmSync(root,{recursive:true,force:true});

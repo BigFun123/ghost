@@ -36,6 +36,26 @@
         "min": 0.001,
         "max": 1000,
         "default": 1
+      },
+      "calibrationAngle1": {
+        "min": -90,
+        "max": 90,
+        "default": 0
+      },
+      "calibrationAngle2": {
+        "min": -90,
+        "max": 90,
+        "default": 0
+      },
+      "calibrationGain1": {
+        "min": 0,
+        "max": 1000,
+        "default": 0
+      },
+      "calibrationGain2": {
+        "min": 0,
+        "max": 1000,
+        "default": 0
       }
     },
     "Stepper Linear Actuator": {

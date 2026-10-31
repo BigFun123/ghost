@@ -1569,6 +1569,13 @@ allServosOffButton.addEventListener("click", () => {
   drawServoPreview();
 });
 
+function setControllerOnline(online) {
+  const tab = document.getElementById("mixerTab");
+  const connected = !!online && !offlineSimulation && !controllerRebooting;
+  tab.classList.toggle("is-online", connected);
+  tab.setAttribute("aria-description", connected ? "Robot online" : "Robot offline or not connected");
+}
+
 async function refresh() {
   if (offlineSimulation || controllerRebooting) return;
   const modeRevision = commandModeRevision;
@@ -1585,6 +1592,7 @@ async function refresh() {
     sensorTelemetryAt = performance.now();
     if (colorRevision === ledColorRevision) setPreviewLedColor(status.led?.rgb, false);
     updateServoPreview(status.servos);
+    setControllerOnline(status.wifi.connected);
     setText("connection", status.wifi.connected ? "Online" : "Wi-Fi disconnected");
     setText("chipId", status.device.chipId);
     setText("cpu", status.device.cpuMHz + " MHz");
@@ -1772,6 +1780,7 @@ function resetUnavailableConfiguration(error) {
   stopSweep(); stopSequence();
   commandModeRevision += 1;
   offlineSimulation = true;
+  setControllerOnline(false);
   sensorTelemetry = null;
   servoControls.forEach(control => { clearTimeout(control.timer); control.strip.remove(); });
   servoControls = [];
@@ -1812,6 +1821,7 @@ function resetUnavailableConfiguration(error) {
 document.getElementById("previewOffline").addEventListener("click", () => setOfflineSimulation(!offlineSimulation));
 
 function setOfflineSimulation(enabled) {
+  if (enabled || offlineSimulation !== enabled) setControllerOnline(false);
   document.getElementById("previewOffline").setAttribute("aria-pressed", String(enabled));
   if (offlineSimulation !== enabled) globalThis.GhostLearning?.stopEnvironment();
   if (offlineSimulation === enabled) return;
@@ -3134,8 +3144,16 @@ function initializePreviewPlacementControls() {
     transforms.append(group);
   });
   renderComponentMass(selectedNode, transforms);
-  renderComponentPower(selectedNode, transforms);
+  const settingsBeforePower = componentRegistry.resolve(selectedNode)?.settingsBeforePower;
+  if (!settingsBeforePower) renderComponentPower(selectedNode, transforms);
   componentRegistry.resolve(selectedNode)?.renderSettings?.({ node: selectedNode, host: transforms,
+    readCalibration: () => {
+      const index = servoPreview.nodes.indexOf(selectedNode);
+      return { offline: offlineSimulation, sensor: sensorTelemetry?.vl53l0x,
+        telemetryAgeMs: performance.now() - sensorTelemetryAt,
+        direction: GhostSensor.sensorRay(servoPreview.nodes, index, previewWorldPoint)?.direction,
+        simulated: createPreviewSensorSampler()(index) };
+    },
     controllerAddressChanged: updatePreviewControllerAddress,
     editing: servoPreview.editing, change: () => {
       Object.assign(servoPreview.configuration.components[servoPreview.selected], componentRegistry.settings(selectedNode));
@@ -3143,6 +3161,7 @@ function initializePreviewPlacementControls() {
       if (previewPhysicsEnabled && previewPhysics) syncPreviewPhysics();
       drawServoPreview();
     } });
+  if (settingsBeforePower) renderComponentPower(selectedNode, transforms);
   if (componentRegistry.hasCapability(selectedNode, "constraints")) renderNullConstraints(selectedNode, transforms);
   updatePreviewTransform();
 }
@@ -4128,6 +4147,7 @@ async function rebootController() {
   stopSweep();
   stopSequence();
   controllerRebooting = true;
+  setControllerOnline(false);
   commandModeRevision += 1;
   button.disabled = true;
   button.textContent = "Rebooting...";

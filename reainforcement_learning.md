@@ -292,14 +292,14 @@ of optimality. See Help and devserver/README.md for exact quality/stability rule
 ### Devserver checkpoint storage
 
 Save policy now writes a uniquely named JSON file to the project-root `training/`
-folder when the local devserver is detected. A new timestamp/unique suffix avoids
-overwriting previous checkpoints. The folder is Git-ignored and outside `data/`,
+folder when the local devserver is detected. The user-entered Policy file name
+is used, with numeric suffixes on repeated saves to avoid overwriting checkpoints. The folder is Git-ignored and outside `data/`,
 so it is excluded from controller filesystem uploads. Other hosts retain browser
 downloads. The UI reports the saved relative path; Load policy can select that
 file from disk. An old devserver produces an explicit restart instruction.
 
 The local same-origin JSON endpoint enforces the existing request-origin checks,
-a 2 MB policy limit, generated filenames and versioned numeric model data. Tests
+a 2 MB policy limit, validated user filenames and versioned numeric model data. Tests
 cover real-policy round-trip storage, repeated saves, malformed/oversized input,
 unsafe names and cross-origin rejection. No firmware changes are needed.
 
@@ -369,3 +369,71 @@ and requires fresh evidence. See Robust convergence monitoring above.
 
 No smoke test demonstrates a learned search policy; convergence tests verify the
 calculation and orchestration, not that arbitrary training will reach the target.
+
+## Selectable vectorized training (implemented)
+
+- [x] User-selectable 1, 2, 4, 8 or 16 independent Rapier worlds sharing one policy.
+- [x] Batched policy/value inference, per-world time-ordered trajectories and GAE trace boundaries retaining rollout bootstrap.
+- [x] Independent seeded resets, aggregate samples/episodes, one optimizer update per combined rollout, and continued training sampler state within the worker.
+- [x] Actual snapshot grid with display-only offsets (16 = 4 x 4), E01 telemetry, and lower-detail small targets only in the renderer.
+- [x] Full Auto uses selected count; budget text accounts for all worlds. Monitoring, curriculum probes and final qualification stay separate.
+- [x] Whole-collector pause/stop and cleanup on cancellation/reset failure.
+- [x] Tests for 16-world batches, resets, GAE isolation/bootstrap, tensor ownership, real worker training and large scene rendering.
+
+Physics is interleaved in one worker; this is vectorized parallel-environment
+training, not multi-core physics execution or a promised linear speedup. Default
+count stays one. Training samples per update equal count x rollout horizon.
+
+## Parallel performance correction
+
+- [x] Profile real sensor/physics stepping independently from training.
+- [x] Cache per-tick rigid poses; compile component-local sensing triangles and bounds once per reset. Preserve the reference query as a non-rigid fallback.
+- [x] Share local render geometry across replicas/pose updates; avoid snapshots that would be dropped by the display throttle.
+- [x] Time-budget cooperative yields, preserving pause/stop and real-time policy test pacing.
+- [x] Show environment, inference, optimizer and snapshot stage timing in training output.
+- [x] Test reference-ray equivalence, real-Rapier trajectory/reward/termination parity, rendering cache reuse and worker cancellation.
+
+The local 256-action / 16-world physics-sensor benchmark improved from 8,595 ms
+to 160 ms (30 to about 1,600 aggregate samples/s). End-to-end browser throughput
+also includes inference, optimizer, scheduling and display overhead.
+
+Final WebGL validation: 339.5 aggregate samples/s for a 16 x 64 run, about
+3.0 seconds per update. Packed GPU metric readbacks reduced observed optimizer
+time from 2,180 to 867 ms in comparable smoke runs without changing loss/epochs/
+clipping. Sensor benchmark acceleration is separate from end-to-end throughput;
+no display-FPS or linear speedup guarantee is implied. All 55 targeted regression
+checks passed, including real-Rapier reference parity and real worker lifecycle.
+
+## Larger grid presets
+
+- [x] Add 64 (8 x 8) and 256 (16 x 16) worlds to the shared-policy selector.
+- [x] Adaptive display-only geometry/detail and snapshot intervals for large grids; log E01 episodes while preserving aggregate counters.
+- [x] Bound combined rollout samples to 131,072 per update and preserve per-world GAE/bootstrap isolation.
+- [x] Real 64/256-world worker updates, metadata, tensor cleanup; large-rendering and reset-failure regression checks.
+
+Physics is still CPU/WASM; larger GPU batches do not imply GPU physics or linear
+throughput gains. Full Auto uses the selected count and displays its total budget.
+
+Browser validation: 64-world preview and a completed 256-world WebGL update
+(16,384 samples, 547.8 aggregate samples/s). All 59 targeted regression tests
+passed. Large counts use bounded rollout memory and adaptive overview rendering.
+
+## Policy filename input
+
+- [x] Policy file name beside Save policy / Load policy, mirrored in quick controls.
+- [x] Use the chosen stem for devserver files and downloads, with optional .json.
+- [x] Preserve existing files with atomic numbered duplicate names; reject unsafe paths/device names.
+- [x] Full Auto uses the selected filename; successful Load suggests the loaded stem.
+- [x] Browser verified named-policy-smoke.json and named-policy-smoke-2.json; storage and download tests pass.
+
+## Target changes without mandatory retraining
+
+- [x] Mission target selection validates/rebuilds the isolated environment while preserving learned weights and optimizer. Policy Test becomes available immediately.
+- [x] Invalid target changes revert the selector and retain the previous usable environment/policy.
+- [x] Saved weights can transfer across target-only compatibility differences; non-target hardware indices/configuration, joint mapping/limits, sensor/observation/action contracts, reward and timing stay strict.
+- [x] New target clears previous tests, monitoring, qualification, curriculum and best-checkpoint evidence. Loading still restarts optimizer/sampler state.
+- [x] UI/real worker tests prove predictions unchanged, optimizer retained on live switches, test execution without training, and safe rejection of incompatible rigs.
+
+Setup edits may dispose the in-memory session; save first, initialize the updated
+scene and load compatible weights. This feature does not implement moving-target
+tracking or guarantee that the retained policy will acquire a new target.

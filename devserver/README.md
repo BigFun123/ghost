@@ -194,9 +194,16 @@ This is simulation-only testing, not a sequencer action or hardware deployment.
 
 ## Policy files in training/
 
-On the devserver, Save policy writes a uniquely named JSON checkpoint into the
-project-root `training/` folder, outside `data/` and filesystem uploads. Each save
-creates a new file; existing checkpoints are not overwritten. The UI reports the
+The Policy file name input beside Save/Load (also mirrored in Spatial Telemetry)
+sets the filename for devserver saves and browser downloads. The default is
+`policy`; `.json` is appended if omitted. On the devserver this writes to the
+project-root `training/` folder, outside `data/` and filesystem uploads. For
+example `pan-tilt-search` saves as `pan-tilt-search.json`. Repeated saves create
+`pan-tilt-search-2.json`, `pan-tilt-search-3.json`, etc.; existing files are never
+overwritten. Names allow 1-64 letters, numbers, spaces, hyphens and underscores
+and reject reserved Windows device names. Successful Load fills the input from
+the loaded filename. Full Auto uses the same input, which can be edited while
+training and is disabled only during file I/O. The UI reports the
 relative path. Use Load policy to select that file from disk. Other hosts retain
 the browser-download workflow. Restart the devserver after updating its code.
 The local same-origin JSON endpoint is `POST /api/training/policies`; it accepts
@@ -290,3 +297,136 @@ This establishes stage-scoped clean-simulation validation, not global optimality
 or hardware readiness. Occlusion/noise/deadline case suites and replication across
 independent training seeds remain open. Long monitor/qualify requests share the
 training/evaluation cancellation path and are not subject to the short RPC timeout.
+
+## Parallel training environments
+
+Policy Optimization offers 1 (default), 2, 4, 8, 16, 64 or 256 isolated Rapier worlds.
+Sixteen displays a 4 x 4 grid in Simulation Twin. All replicas share one PPO
+agent, batched action/value inference, and optimizer. Physics is cooperatively
+interleaved in one Web Worker, not one thread per replica; speedup is workload
+and backend dependent. The grid offsets and lower-detail targets affect only
+drawing. The telemetry readout follows E01.
+
+Steps per environment is the rollout horizon. Total samples per update are
+worlds x horizon, so 16 x 128 produces 2,048 samples. The UI shows run and auto
+budget totals; larger counts increase physics/memory and optimizer work. Every
+replica resets independently, using training-only seeded cases. Additional
+training seeds are kept out of the current monitoring and final seed ranges;
+continuation within a worker advances the training sampler. Load/restore resets
+sampler and rollout state. Training metadata records the environment count and
+samples per update; policy compatibility remains independent of count.
+
+Trajectories are ordered separately per replica with explicit GAE trace ends.
+Those boundaries retain value bootstrapping while preventing rewards leaking
+across worlds. PPO updates only after all replicas finish their horizons. Pause
+and stop cover the entire collector; incomplete rollouts are discarded and all
+worlds disposed on cancellation/failure. Acquisitions/probes and held-out/final
+evaluations remain outside the training replicas.
+
+Validation covers 16-world sample counts, independent resets, GAE boundaries,
+cancellation/reset failures, tensor cleanup and batch/single inference parity.
+The real worker test runs sixteen Rapier worlds and verifies shared-policy
+updates, pause/stop, file round-trips and unchanged evaluation weights.
+
+## Training performance
+
+Training sensor queries now compile fixed local geometry once per environment
+reset, reject local mesh bounds, and intersect precomputed triangles. Rigid pose
+transforms are cached for each physical tick. Rays move into component-local
+coordinates instead of rebuilding all world-space polygons six times per action.
+Targets, floor priority, nearest-hit identity, range limits and physics/reward
+ticks are unchanged. Non-rigid custom transforms use the reference sensor path.
+Geometry edits require a new/reset environment, as before.
+
+The grid renderer shares cached local mesh templates across replicas and pose
+updates. Training snapshots are captured only when a display frame is due (up to
+20 Hz); worker event-loop yields use an 8 ms time budget rather than a fixed
+number of per-world calls. Pause/stop still yield cooperatively; real-time policy
+tests retain 50 ms action pacing. Training output reports environment/sensor,
+inference, optimizer and snapshot stage times in milliseconds. These are cumulative
+per-run wall times, not GPU utilization; reset/probe and scheduling time can make
+the overall run longer.
+
+Run `node scripts/benchmark_ai_parallel.mjs` for a reproducible held-action
+physics/sensor benchmark (no neural inference, optimizer or rendering). On this
+machine, 16 worlds x 16 actions took 8,595 ms before optimization (30 aggregate
+samples/s), 1,865 ms with pose caching, and 160 ms with compiled sensing (1,600
+aggregate samples/s). This is a subsystem benchmark, not a promised end-to-end
+speed multiplier or display frame rate. Existing saved policies remain compatible.
+
+Regression coverage compares 500 moving sensor scenes with reference raycasts,
+plus real Rapier action sequences with accelerated sensing on/off (observations,
+rewards, nearest-hit identity and termination).
+
+GPU synchronization is also reduced: batched actions read probabilities and
+values together, and PPO minibatch metrics/loss/gradient norm use one packed
+readback instead of seven scalar reads. Non-finite checks still happen before
+applying gradients; loss, clipping, epochs and minibatch size are unchanged.
+The real WebGL browser check after sensor/geometry improvements completed a
+16 x 64 rollout/update at 233 aggregate samples/s (about 4.4 s), with 573 ms in
+environment stepping, 815 ms in inference, and 2,180 ms in optimization. That
+measurement predates the packed-readback change and is not a frame-rate claim.
+
+The final WebGL browser check with packed reads measured 339.5 aggregate
+samples/s for 16 worlds x 64 actions (about 3.0 s per rollout/update): environment
+684 ms, inference 595 ms, optimizer 867 ms, snapshots 68 ms. These are separate
+observations on this machine, not a guarantee of identical throughput elsewhere.
+GPU readback packing preserves the reported loss and KL in the comparable smoke
+runs (-0.1024 / 0.00925). Grid updates can still pause while weights are optimized.
+Save policy before refreshing the page, then load it to continue with the new
+worker code. Model compatibility and physics/reward semantics are unchanged.
+
+## 8 x 8 and 16 x 16 training grids
+
+Parallel environments now also offers 64 / 8 x 8 and 256 / 16 x 16. At 128
+steps per environment, these collect 8,192 and 32,768 samples per optimizer
+update. The selected count is used by manual and Full Auto training. All share
+one policy; physics remains CPU/WASM in one cooperative worker. GPU inference
+and optimizer work are batched. Count alone is not a speedup guarantee.
+
+For >=64 worlds the renderer uses visual body/shaft bounds and small targets;
+real sensing and physics keep their original geometry. Display caps are 10 Hz
+for 64 worlds and 4 Hz for 256, compared with 20 Hz for smaller grids. Sparse
+row labels expand when zoomed. Only E01 episode events are sent to the event
+log at these sizes; aggregate sample, episode and success counters include all
+worlds. Training snapshots are skipped until the display interval is due.
+
+The collector accepts up to 256 worlds and 131,072 combined samples per update
+(the largest UI combination is 256 x 512). This bounds rollout memory while
+preserving existing horizon choices. Real worker tests run 64 and 256 Rapier
+worlds, complete shared-policy updates, save count metadata and verify tensor
+cleanup on discard. Fake-world tests cover all trajectory boundaries, large-grid
+reset failures, and cleanup. Default remains one environment.
+
+The 256-world WebGL browser smoke run completed one 256 x 64 update: 16,384
+samples at 547.8 aggregate samples/s (about 30 seconds). Observed stage times:
+environment 8,497 ms, reset 1,994 ms, inference 1,667 ms, optimizer 10,226 ms,
+snapshots 930 ms. Display/scheduling overhead is additional; this is a measured
+smoke run, not a promise of per-world real-time speed. All 59 targeted tests pass.
+
+## Testing retained weights on another target
+
+Changing only Mission's target selection now validates and resets an isolated
+environment while retaining the worker's policy and Adam optimizer. Policy Test
+is enabled immediately, without a new training update. If validation fails, the
+selector returns to the previous target and its environment/policy stay usable.
+The target selector is disabled during active runs and policy I/O.
+
+Saved weights may also load into target-only scene changes: passive Target nodes
+and selected target identity/position can differ. Non-target component indices,
+mounts, joint mapping/limits, sensor contract, observation/actions, reward and
+mission timing still must match. Editing Setup can clear the live session; save
+first, initialize the changed scene and load the file to test without retraining.
+Loads restart optimizer/sampler state as before; a live selector switch retains
+optimizer state. Target transfer clears old tests, monitoring, qualification,
+curriculum and best-checkpoint evidence. New evaluation is required. This does
+not implement moving-target tracking or prove generalization.
+
+## Training tab indicator
+
+AI Learning shows a small spinner while manual or Full Auto training remains
+active, independent of the selected page. Pause freezes the indicator in amber;
+completion, stop, failure or scene disposal clears it. Reduced-motion preferences
+use a static indicator. The tab keeps its accessible name and exposes activity
+in its tooltip/description. Application-version metadata uses a valid meta tag
+so it does not introduce a stray body element that collapses the header grid.

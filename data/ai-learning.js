@@ -55,7 +55,7 @@
       const checkedTask = validateTask(current);
       setText("aiLearningStatus", "Initializing TensorFlow.js...");
       setText("aiLearningRuntime", "Loading and testing...");
-      learningWorker=GhostLearningWorker.create({onFatal:message=>{stopEnvironment();setText("aiLearningRuntime","Worker failed; initialize again");log(message);}});
+      learningWorker=GhostLearningWorker.create({onWeights:data=>globalThis.GhostWeightSurface?.show(data),onFatal:message=>{stopEnvironment();setText("aiLearningRuntime","Worker failed; initialize again");log(message);}});
       const componentFiles=Array.from(document.querySelectorAll?.('script[src^="./components/"]')??[],script=>script.getAttribute('src').slice(2));
       const runtime = await learningWorker.request('init',{nodes:JSON.parse(JSON.stringify(current.nodes)),task:checkedTask,componentFiles,backend:backend.value},(event,message)=>{if(event==='log'&&revision===generation)log(message);});
       setText("aiLearningRuntime", runtime.version + " / " + runtime.backend + " / Web Worker");
@@ -142,10 +142,28 @@
     log(checked.notes);
     return checked;
   }
-  for (const input of selectionInputs()) input.addEventListener("change", () => {
-    stopEnvironment();
-    refresh();
-    setText("aiLearningStatus", "Selection changed; validate or initialize again");
+  async function changeTarget(){
+    if(!environment||!policy||!learningWorker){stopEnvironment();refresh();setText('aiLearningStatus','Target changed; initialize the environment. A compatible saved policy can be loaded without training.');return;}
+    if(trainingRun||baselineRun||autoRun||policyIO||initializing)return;
+    const revision=generation,previousTarget=task.targetIndex,worker=learningWorker;let replacement=null;
+    policyIO=true;updateEnvironmentControls();
+    try{
+      const current=scene();if(!current.offline||current.fingerprint!==initializedScene)throw new Error('Setup changed; initialize and reload the policy.');
+      const checked=validateTask(current),nextOptions={...environmentOptions,nodes:JSON.parse(JSON.stringify(current.nodes)),task:JSON.parse(JSON.stringify(checked))};
+      replacement=GhostLearningEnvironment.create(nextOptions);const initial=replacement.reset(episodeSeed());
+      const retained=await worker.request('retarget',{nodes:nextOptions.nodes,task:checked});
+      if(revision!==generation||worker!==learningWorker)return;
+      environment.dispose();environment=replacement;replacement=null;environmentOptions=nextOptions;task=checked;runSnapshot=null;policy=retained;trainedUpdates=retained.completedUpdates;
+      task.joints.forEach((joint,i)=>{const input=document.getElementById(i?'aiTestTilt':'aiTestPan');input.min=joint.min;input.max=joint.max;input.value=joint.startup;});
+      clearPolicyMetrics();showConvergence(retained.convergence);setText('aiPPOUpdates',String(trainedUpdates));setText('aiPPOTrainingSummary','Retained weights ('+trainedUpdates+' completed training updates); evaluate their behavior on the new target.');setText('aiPolicyState','POLICY READY');reportEnvironment(initial,true);
+      setText('aiLearningTarget',current.nodes[task.targetIndex].name);setText('aiLearningStatus','Target changed; weights retained. Run Policy Test without retraining.');
+      setText('aiTestStatus','Existing policy ready for the new target. Previous evaluation results were cleared.');setText('aiTrainingProgress','Weights and optimizer retained; target-specific training and evaluation evidence cleared.');log('Target changed to '+current.nodes[task.targetIndex].name+'. Existing weights retained; evaluate the new target before judging performance.');
+    }catch(error){if(revision===generation){document.getElementById('aiLearningTargetSelect').value=String(previousTarget);setText('aiLearningStatus','Target change rejected: '+error.message+' Previous target and policy retained.');log(error.message);}}
+    finally{replacement?.dispose();policyIO=false;updateEnvironmentControls();}
+  }
+  for (const input of selectionInputs()) input.addEventListener('change',()=>{
+    if(input===document.getElementById('aiLearningTargetSelect'))return changeTarget();
+    stopEnvironment();refresh();setText('aiLearningStatus','Selection changed; validate or initialize again');
   });
   document.getElementById("aiLearningValidate").addEventListener("click", () => {
     stopEnvironment();
@@ -163,7 +181,7 @@
   function updateLearningView(current = scene()) {
     if (!globalThis.GhostLearningView) return;
     if (runSnapshot) { GhostLearningView.show(runSnapshot); return; }
-    if (environment) { GhostLearningView.show(environment.snapshot()); return; }
+    if (environment) { const value=environment.snapshot(),count=Number(document.getElementById('aiTrainingEnvironments').value||1);GhostLearningView.show(count>1?{...value,replicas:Array.from({length:count},()=>value),gridStage:document.getElementById('aiTrainingStage').value,gridPreview:true}:value); return; }
     const nodes=current.nodes;
     const poses=nodes.map((node,index)=>Object.fromEntries([false,true].map(shaft=>{
       const origin=servoWorldPoint(nodes,index,[0,0,0],shaft);
@@ -174,9 +192,18 @@
     const targetValue=document.getElementById("aiLearningTargetSelect").value;
     const sensorIndex=sensorValue===""?-1:Number(sensorValue),targetIndex=targetValue===""?-1:Number(targetValue);
     const reading=sensorIndex<0?null:GhostSensor.read({nodes,index:sensorIndex,worldPoint:servoWorldPoint,registry:componentRegistry});
-    GhostLearningView.show({nodes,poses,reading,sensorIndex,targetIndex,mode:'configured'});
+    const preview={nodes,poses,reading,sensorIndex,targetIndex,mode:'configured'},count=Number(document.getElementById('aiTrainingEnvironments').value||1);
+    GhostLearningView.show(count>1?{...preview,replicas:Array.from({length:count},()=>preview),gridStage:document.getElementById('aiTrainingStage').value,gridPreview:true}:preview);
   }
   function updateEnvironmentControls() {
+    const activity=document.getElementById('aiLearningTabSpinner'),tab=document.getElementById('aiLearningTab');
+    const active=!!learningWorker&&((!!autoRun&&!autoRun.cancelled)||(trainingRun?.kind==='train'&&!trainingRun.cancelled)),paused=active&&!!trainingRun?.paused;
+    activity.hidden=!active;activity.classList?.toggle('is-paused',paused);
+    const activityText=paused?'Training paused':active?(autoRun?'Automatic training active':'Training active'):'No active training';
+    tab.title='AI Learning — '+activityText;tab.setAttribute?.('aria-description',activityText);
+
+    document.getElementById('aiPolicyName').disabled=policyIO;
+    document.getElementById('aiLearningTargetSelect').disabled=!!trainingRun||!!baselineRun||!!autoRun||policyIO||initializing;
     const busy=!!baselineRun||!!trainingRun||policyIO||!!autoRun||initializing;
     document.getElementById('aiTrainingAuto').disabled=busy;
     document.getElementById('aiAutoBatches').disabled=busy;
@@ -200,8 +227,14 @@
     document.getElementById("aiTrainingSave").disabled=!environment||!policy||busy;
     document.getElementById("aiTrainingLoad").disabled=!environment||busy;
     for(const id of ["Evaluate","Discard"])document.getElementById("aiTraining"+id).disabled=!environment||!policy||busy;
-    for(const id of ["Stage","Seed","Updates","Rollout","Warm"])document.getElementById("aiTraining"+id).disabled=busy||(id==="Seed"&&!!policy);
+    for(const id of ["Stage","Seed","Updates","Rollout","Environments","Warm"])document.getElementById("aiTraining"+id).disabled=busy||(id==="Seed"&&!!policy);
   }
+  function parallelBudget(){
+    const count=Number(document.getElementById('aiTrainingEnvironments').value||1),rollout=Number(document.getElementById('aiTrainingRollout').value||128),updates=Number(document.getElementById('aiTrainingUpdates').value||4),batches=Number(document.getElementById('aiAutoBatches').value||100);
+    setText('aiParallelBudget',count+' independent world'+(count===1?'':'s')+' / '+(count*rollout).toLocaleString()+' samples per update / '+(count*rollout*updates).toLocaleString()+' samples this run / auto limit '+(count*rollout*updates*batches).toLocaleString()+' training samples. Telemetry: E01.');
+  }
+  for(const id of ['aiTrainingEnvironments','aiTrainingRollout','aiTrainingUpdates','aiAutoBatches'])document.getElementById(id).addEventListener('change',()=>{parallelBudget();if(!trainingRun){if(id==='aiTrainingEnvironments')runSnapshot=null;updateLearningView();}});
+  parallelBudget();
   document.getElementById("aiTrainingWarm").addEventListener("change",updateEnvironmentControls);
   function showConvergence(state){
     convergenceState=state;
@@ -231,7 +264,7 @@
     setText("aiTestStatus","Initialize the environment, then train or load a policy to test it.");
     setText("aiTestAction","No policy action yet.");
     if(trainingRun)trainingRun.cancelled=true;
-    learningWorker?.dispose();learningWorker=null;policy=null;trainedUpdates=0;clearPolicyMetrics();
+    learningWorker?.dispose();globalThis.GhostWeightSurface?.show(null);learningWorker=null;policy=null;trainedUpdates=0;clearPolicyMetrics();
     setText("aiPolicyState","NO POLICY");setText("aiTrainingProgress","Initialize the environment before training.");
     if(baselineRun){baselineRun.cancelled=true;baselineRun.environment?.dispose();}
     runSnapshot=null;environmentOptions=null;
@@ -372,20 +405,21 @@
     refresh();if((autoRun&&autoRun!==autoOwner)||!environment||!policy||trainingRun||baselineRun||policyIO)return;
     const revision=generation;policyIO=true;updateEnvironmentControls();
     try{
+      const name=document.getElementById('aiPolicyName').value.trim().replace(/\.json$/i,'').trim();
+      if(!/^[A-Za-z0-9_-][A-Za-z0-9 _-]{0,63}$/.test(name)||/^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])$/i.test(name))throw new Error('Enter a policy file name (1-64 letters, numbers, spaces, - or _; no reserved device names).');
       const record=await learningWorker.request('save',{best});if(revision!==generation)return;
       if(typeof localConfigServer!=='undefined'&&localConfigServer){
         const capability=await fetch('/api/devserver');
         if(!capability.ok||!(await capability.json()).trainingPolicyStorage)throw new Error('Restart the devserver to enable policy saves to training/.');
         if(revision!==generation)return;
-        const name=scene().robot.replace(/[^A-Za-z0-9_-]/g,'_').slice(0,64)||'robot';
         const response=await fetch('/api/training/policies',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,policy:record})});
         if(!response.ok)throw new Error(await response.text());
         const saved=await response.json();if(revision!==generation)return;
         setText('aiPolicyFileStatus','Saved to '+saved.path);log('Policy saved locally: '+saved.path+'. Loading restores weights; optimizer and rollout state restart.');return true;
       }
       const url=URL.createObjectURL(new Blob([JSON.stringify(record)],{type:'application/json'})),link=document.createElement('a');
-      link.href=url;link.download=scene().robot.replace(/[^A-Za-z0-9_-]/g,'_')+'-ppo-policy.json';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
-      setText("aiPolicyFileStatus","Policy exported locally with compatibility data and available evaluation results.");log("Policy exported. Loading restores weights; Adam, sampling and rollout state restart.");return true;
+      link.href=url;link.download=name+'.json';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+      setText("aiPolicyFileStatus","Exported "+name+".json with compatibility data and available evaluation results.");log("Policy exported. Loading restores weights; Adam, sampling and rollout state restart.");return true;
     }catch(error){if(revision===generation)setText("aiPolicyFileStatus","Save failed: "+error.message);}
     finally{policyIO=false;updateEnvironmentControls();}
   }
@@ -399,11 +433,12 @@
       if(file.size>2*1024*1024)throw new Error('Policy file exceeds 2 MB.');
       const record=JSON.parse(await file.text());if(revision!==generation)return;
       const restored=await learningWorker.request('load',{record});if(revision!==generation)return;
+      document.getElementById('aiPolicyName').value=file.name.replace(/\.json$/i,'').slice(0,64);
       policy=restored;trainedUpdates=restored.completedUpdates;clearPolicyMetrics();showConvergence(restored.convergence??null);setText("aiPPOUpdates",String(trainedUpdates));
       document.getElementById("aiTrainingSeed").value=String(policy.schema.seed);setText("aiPolicyState","POLICY READY");
-      setText("aiTestStatus","Policy loaded. Choose a starting pose and run a test.");
+      setText("aiTestStatus",restored.targetChanged?"Weights loaded for a different target. Test now without retraining; prior evidence was cleared.":"Policy loaded. Choose a starting pose and run a test.");
       setText("aiTrainingProgress","Policy loaded into worker. Evaluate on ordinary held-out starts.");
-      setText("aiPolicyFileStatus","Compatible weights restored. Optimizer, sampling and rollout state restarted.");log("Compatible policy loaded; prior policy replaced. Run a fresh held-out evaluation.");
+      setText("aiPolicyFileStatus",restored.targetChanged?"Same-rig weights transferred to the selected target. Prior evaluation evidence cleared; optimizer and rollout state restarted.":"Compatible weights restored. Optimizer, sampling and rollout state restarted.");log("Compatible policy loaded; prior policy replaced. Run a fresh held-out evaluation.");
     }catch(error){if(revision===generation){setText("aiPolicyFileStatus","Load rejected: "+error.message+" Current policy retained.");log("Policy load rejected: "+error.message);}}
     finally{policyIO=false;updateEnvironmentControls();}
   });
@@ -448,25 +483,25 @@
       if(run.cancelled||revision!==generation)return false;
       const latest=scene();if(!latest.offline||latest.fingerprint!==initializedScene){stopEnvironment();setText("aiLearningStatus","Setup changed; initialize again");return false;}return true;
     };
-    const onFrame=frame=>{if(!current())return;if(frame.phase==='reset')log('PPO reset seed '+frame.scenario.seed+': commanded '+frame.result.info.commands.map(angle=>angle.toFixed(2)).join(' / ')+' degrees; actual '+frame.result.observation.jointAnglesDegrees.map(angle=>angle.toFixed(2)).join(' / ')+' degrees. No homing or policy action has run.');else if(kind==='evaluate'&&frame.phase==='first-action')log('PPO first action: '+GhostLearningPolicy.actions[frame.action].name);runSnapshot={...frame.snapshot,mode:kind==='train'?'training':'policy-eval',policyRunning:true};reportEnvironment(frame.result,true);};
+    const onFrame=frame=>{if(!current())return;if(frame.phase==='reset')log('PPO reset seed '+frame.scenario.seed+': commanded '+frame.result.info.commands.map(angle=>angle.toFixed(2)).join(' / ')+' degrees; actual '+frame.result.observation.jointAnglesDegrees.map(angle=>angle.toFixed(2)).join(' / ')+' degrees. No homing or policy action has run.');else if(kind==='evaluate'&&frame.phase==='first-action')log('PPO first action: '+GhostLearningPolicy.actions[frame.action].name);runSnapshot={...frame.snapshot,replicas:frame.replicas,environmentCount:frame.environmentCount,gridStage:frame.scenario.stageId,mode:kind==='train'?'training':'policy-eval',policyRunning:true};reportEnvironment(frame.result,true);};
     try {
       if(kind==='train') {
         if(convergenceState)showConvergence({...convergenceState,status:'Stale',converged:false});
-        const seed=Number(document.getElementById("aiTrainingSeed").value),updates=Number(document.getElementById("aiTrainingUpdates").value),rolloutSteps=Number(document.getElementById("aiTrainingRollout").value),warm=document.getElementById("aiTrainingWarm").checked,progressive=warm&&document.getElementById("aiTrainingBridge").checked;
+        const environmentCount=Number(document.getElementById("aiTrainingEnvironments").value||1),seed=Number(document.getElementById("aiTrainingSeed").value),updates=Number(document.getElementById("aiTrainingUpdates").value),rolloutSteps=Number(document.getElementById("aiTrainingRollout").value),warm=document.getElementById("aiTrainingWarm").checked,progressive=warm&&document.getElementById("aiTrainingBridge").checked;
         const readyPolicy=await worker.request('create',{seed});if(revision!==generation)return;policy=readyPolicy;
         if(!current())return;run.started=true;setText('aiTestStatus','Training changes the policy; run a fresh test afterward.');setText('aiTestAction','No policy action yet.');setText("aiPPOEvaluation","New training run; evaluate the resulting weights on held-out starts.");setText("aiPPOComparison","Comparison pending for the resulting weights.");updateEnvironmentControls();
         setText("aiPolicyState","TRAINING");setText("aiLearningStatus","PPO training running in isolated simulation");setText("aiTrainingProgress","Collecting on-policy rollouts...");
-        log("PPO: "+stageId+" / "+(progressive?"progressive acquisition starts":warm?"near-target holding starts":"ordinary starts")+" / "+updates+" updates x "+rolloutSteps+" steps; "+JSON.stringify(policy.settings));
+        log("PPO: "+stageId+" / "+(progressive?"progressive acquisition starts":warm?"near-target holding starts":"ordinary starts")+" / "+environmentCount+" worlds x "+updates+" updates x "+rolloutSteps+" steps per world; "+JSON.stringify(policy.settings));
         const onEpisode=episode=>{if(current()&&episode.curriculum){const c=episode.curriculum;setText("aiCurriculumProgress","Acquisition stage "+(c.level+1)+"/"+c.levels+" / "+Math.round(c.fraction*100)+"% toward ordinary starts / "+c.successes+" successes in "+c.episodes+" recent frozen training-case probes.");}if(current())log("PPO episode seed "+episode.seed+": "+episode.reason+"; return "+episode.reward.toFixed(3));};
         const onUpdate=metrics=>{
 
             if(!current())return;trainedUpdates=metrics.completedUpdates;
             if(metrics.curriculum){const c=metrics.curriculum;setText("aiCurriculumProgress","Acquisition stage "+(c.level+1)+"/"+c.levels+" / "+Math.round(c.fraction*100)+"% toward ordinary starts / "+c.successes+" successes in "+c.episodes+" recent frozen training-case probes.");}
             setText("aiPPOSteps",String(metrics.steps));setText("aiPPOUpdates",String(trainedUpdates));setText("aiPPOEntropy",metrics.entropy.toFixed(3));setText("aiPPOValueLoss",metrics.valueLoss.toFixed(4));
-            const text=metrics.steps+" steps / "+metrics.episodes+" episodes / "+metrics.successes+" training successes / "+metrics.stepsPerSecond.toFixed(1)+" steps/s / policy loss "+metrics.policyLoss.toFixed(4)+" / KL "+metrics.approxKL.toFixed(5);
-            setText("aiPPOTrainingSummary",text);setText("aiTrainingProgress","Update "+metrics.updates+"/"+updates+" complete.");log("PPO update "+trainedUpdates+": "+text);
+            const text=metrics.steps+" total steps / "+(metrics.environmentCount??1)+" worlds / "+(metrics.samplesPerUpdate??rolloutSteps)+" samples/update / "+metrics.episodes+" episodes / "+metrics.successes+" training successes / "+metrics.stepsPerSecond.toFixed(1)+" steps/s / policy loss "+metrics.policyLoss.toFixed(4)+" / KL "+metrics.approxKL.toFixed(5);
+            setText("aiPPOTrainingSummary",text+(metrics.profile?" / time: environment "+Math.round(metrics.profile.environmentMs)+" ms, reset "+Math.round(metrics.profile.resetMs)+" ms, inference "+Math.round(metrics.profile.inferenceMs)+" ms, optimizer "+Math.round(metrics.profile.optimizerMs)+" ms, snapshots "+Math.round(metrics.profile.snapshotMs)+" ms":""));setText("aiTrainingProgress","Update "+metrics.updates+"/"+updates+" complete.");log("PPO update "+trainedUpdates+": "+text);
         };
-        const outcome=await worker.request('train',{stageId,updates,rolloutSteps,warm,progressive},(event,data)=>{if(event==='frame')onFrame(data);else if(event==='episode')onEpisode(data);else if(event==='update')onUpdate(data);else if(event==='convergence'&&current())showConvergence(data);else if(event==='curriculum-check'&&current())setText('aiTrainingProgress',data);});
+        const outcome=await worker.request('train',{stageId,updates,rolloutSteps,environmentCount,warm,progressive},(event,data)=>{if(event==='frame')onFrame(data);else if(event==='episode')onEpisode(data);else if(event==='update')onUpdate(data);else if(event==='convergence'&&current())showConvergence(data);else if(event==='training-phase'&&current())setText('aiTrainingProgress',data);else if(event==='curriculum-check'&&current())setText('aiTrainingProgress',data);});
         if(revision===generation){policy=outcome.policy;trainedUpdates=policy.completedUpdates;setText("aiPPOUpdates",String(trainedUpdates));}
         if(revision===generation){setText("aiTrainingProgress",outcome.cancelled?"Training stopped; current policy retained.":"Training run complete. Evaluate on held-out starts before judging performance.");setText("aiLearningStatus","Policy retained; evaluate ordinary held-out starts");log("PPO run "+(outcome.cancelled?"stopped":"complete")+": "+outcome.steps+" sampled steps, "+outcome.updates+" complete updates.");}
         return outcome;

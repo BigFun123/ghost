@@ -1,7 +1,6 @@
 // Local policy artifacts live outside data/ and are never part of a controller upload.
 const fs = require('node:fs');
 const path = require('node:path');
-const { randomUUID } = require('node:crypto');
 const maxPolicyBytes = 2 * 1024 * 1024;
 
 function validatePolicy(policy) {
@@ -25,15 +24,21 @@ function validatePolicy(policy) {
 }
 
 function savePolicy(directory, name, policy) {
-  if (typeof name !== 'string' || !/^[A-Za-z0-9_-]{1,64}$/.test(name)) throw new Error('Invalid policy name.');
+  if (typeof name !== 'string') throw new Error('Invalid policy name.');
+  name = name.trim().replace(/\.json$/i, '').trim();
+  if (!/^[A-Za-z0-9_-][A-Za-z0-9 _-]{0,63}$/.test(name) || /^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])$/i.test(name)) throw new Error('Invalid policy name.');
   const json = validatePolicy(policy);
   const root = path.resolve(directory);
   fs.mkdirSync(root, { recursive: true });
   if (fs.lstatSync(root).isSymbolicLink() || !fs.statSync(root).isDirectory()) throw new Error('Training storage must be a regular directory.');
-  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const filename = name + '-ppo-' + stamp + '-' + randomUUID().slice(0,8) + '.json';
-  const target = path.join(root, filename);
-  const fd = fs.openSync(target, 'wx');
+  let filename, target, fd;
+  for (let suffix = 1; suffix <= 10000; suffix++) {
+    filename = name + (suffix === 1 ? '' : '-' + suffix) + '.json';
+    target = path.join(root, filename);
+    try { fd = fs.openSync(target, 'wx'); break; }
+    catch (error) { if (error.code !== 'EEXIST') throw error; }
+  }
+  if (fd === undefined) throw new Error('Too many policies with that name; choose another name.');
   try { fs.writeFileSync(fd, json); }
   catch (error) { fs.closeSync(fd); fs.unlinkSync(target); throw error; }
   fs.closeSync(fd);

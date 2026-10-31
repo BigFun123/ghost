@@ -1,11 +1,35 @@
 const vl53l0xScans = new WeakMap();
-function vl53l0xDistance(node, sensor, telemetryAgeMs) {
+function vl53l0xDistance(node, sensor, telemetryAgeMs, direction) {
   if (!sensor?.ready || !sensor.valid || !(telemetryAgeMs <= 3000) ||
       !Number.isFinite(sensor.distanceMm) || sensor.distanceMm < 0) return null;
-  return sensor.distanceMm * (node.distanceMultiplier ?? 1);
+  let gain = 1;
+  if (direction && node.calibrationGain1 > 0 && node.calibrationGain2 > 0) {
+    const angle = Math.asin(Math.max(-1, Math.min(1, direction[1]))) * 180 / Math.PI;
+    const span = node.calibrationAngle2 - node.calibrationAngle1;
+    if (Math.abs(span) >= 5) {
+      const t = Math.max(0, Math.min(1, (angle - node.calibrationAngle1) / span));
+      gain = node.calibrationGain1 + t * (node.calibrationGain2 - node.calibrationGain1);
+    }
+  }
+  return sensor.distanceMm * (node.distanceMultiplier ?? 1) * gain;
 }
 
-function renderVL53L0XSettings({ node, host, editing, change }) {
+function calibrateVL53L0X(node, slot, sample) {
+if (sample.offline || !sample.simulated?.valid || !sample.direction ||
+    vl53l0xDistance({}, sample.sensor, sample.telemetryAgeMs) === null || sample.sensor.distanceMm <= 0) {
+  throw new Error("Connect the live sensor and aim at a surface visible in simulation.");
+}
+const angle = Math.asin(Math.max(-1, Math.min(1, sample.direction[1]))) * 180 / Math.PI;
+const gain = sample.simulated.distanceMm / (sample.sensor.distanceMm * (node.distanceMultiplier ?? 1));
+const other = slot === 1 ? 2 : 1;
+if (node["calibrationGain" + other] > 0 && Math.abs(angle - node["calibrationAngle" + other]) < 5) throw new Error("Choose angles at least 5° apart.");
+if (!Number.isFinite(gain) || gain < 0.001 || gain > 1000) throw new Error("Calibration ratio is out of range.");
+node["calibrationAngle" + slot] = angle;
+node["calibrationGain" + slot] = gain;
+vl53l0xScan(node).points.length = 0;
+}
+
+function renderVL53L0XSettings({ node, host, editing, change, readCalibration }) {
   const group = document.createElement("div");
   group.className = "setup-transform-group";
   const label = document.createElement("label");
@@ -28,7 +52,39 @@ function renderVL53L0XSettings({ node, host, editing, change }) {
   });
   const hint = document.createElement("small");
   hint.textContent = "Live distance = sensor reading × multiplier. Use known distance ÷ sensor reading to calibrate. Default: 1. Clears captured points; Save robot to keep.";
-  label.append(input); group.append(label, hint); host.append(group);
+  const fields = document.createElement("div");
+  fields.className = "distance-calibration-fields";
+  label.append(input); fields.append(label);
+  const status = document.createElement("small");
+  const refresh = () => { status.textContent = [1, 2].map(slot => node["calibrationGain" + slot] > 0 ?
+    "Angle " + slot + ": " + node["calibrationAngle" + slot].toFixed(1) + "°, ×" + node["calibrationGain" + slot].toFixed(3) : "Angle " + slot + ": not captured").join(" · "); };
+  for (const slot of [1, 2]) {
+    const button = document.createElement("button");
+    button.type = "button"; button.className = "mix-button";
+    button.textContent = "Calibrate angle " + slot; button.disabled = !editing;
+    button.addEventListener("click", () => {
+      try {
+        const sample = readCalibration();
+        calibrateVL53L0X(node, slot, sample);
+        change(); refresh();
+      } catch (error) {
+        status.textContent = error.message;
+        const bar = document.getElementById("connectionError");
+        if (bar) bar.textContent = "Sensor calibration: " + error.message;
+      }
+    });
+    fields.append(button);
+  }
+  const reset = document.createElement("button");
+  reset.type = "button"; reset.className = "mix-button"; reset.textContent = "Reset calibration"; reset.disabled = !editing;
+  reset.addEventListener("click", () => {
+    node.calibrationGain1 = node.calibrationGain2 = 0;
+    vl53l0xScan(node).points.length = 0; change(); refresh();
+  });
+  fields.append(reset);
+  const help = document.createElement("small");
+  help.textContent = "Aim at the matching real/simulated floor, wait for a stable reading, and capture angle 1. Tilt to a second angle and capture angle 2. Both samples are required. Correction varies between those angles and holds at the endpoints outside them. Save robot to keep. Beam direction is unchanged.";
+  refresh(); group.append(fields, hint, status, help); host.append(group);
 }
 
 function vl53l0xScan(node) {
@@ -61,7 +117,7 @@ function drawVL53L0XOverlay({ ctx, nodes, surfaces, project, line, worldPoint, m
     ctx.restore();
   }
   const sensor = sensors?.vl53l0x;
-  const measured = vl53l0xDistance(nodes[index], sensor, telemetryAgeMs);
+  const measured = vl53l0xDistance(nodes[index], sensor, telemetryAgeMs, GhostSensor.sensorRay(nodes, index, worldPoint)?.direction);
   const liveValid = measured !== null;
   const reading = offline ? measureSensor(index) : {
     ...GhostSensor.sensorRay(nodes, index, worldPoint),
@@ -95,8 +151,15 @@ function drawVL53L0XOverlay({ ctx, nodes, surfaces, project, line, worldPoint, m
 
 componentRegistry.register({
   defaults: { distanceMultiplier: 1 },
-  numericSettings: { distanceMultiplier: { min: 0.001, max: 1000, default: 1 } },
+  numericSettings: {
+    distanceMultiplier: { min: 0.001, max: 1000, default: 1 },
+    calibrationAngle1: { min: -90, max: 90, default: 0 },
+    calibrationAngle2: { min: -90, max: 90, default: 0 },
+    calibrationGain1: { min: 0, max: 1000, default: 0 },
+    calibrationGain2: { min: 0, max: 1000, default: 0 }
+  },
   renderSettings: renderVL53L0XSettings,
+  settingsBeforePower: true,
   // A sensor parented directly to a servo rides its moving side.
   parentSide({ parent, nodes, registry }) {
     return registry.attachment(nodes, nodes.indexOf(parent)).fixedSide === "shaft" ? "body" : "shaft";
@@ -142,7 +205,7 @@ function createVL53L0XPanel({ openSettings } = {}) {
   let current;
   function sync() {
     element.classList.toggle("camera-collapsed", !expanded);
-    value.hidden = caption.hidden = actions.hidden = count.hidden = !expanded;
+    value.hidden = caption.hidden = actions.hidden = count.hidden = calibration.hidden = !expanded;
     power.setAttribute("aria-expanded", String(expanded));
     power.setAttribute("aria-pressed", String(expanded));
     power.title = expanded ? "Collapse distance panel" : "Expand distance panel";
@@ -167,11 +230,51 @@ function createVL53L0XPanel({ openSettings } = {}) {
   const actions = document.createElement("div");
   actions.className = "distance-actions";
   actions.append(draw);
+  const calibration = document.createElement("div");
+  calibration.className = "distance-calibration-controls";
+  calibration.setAttribute("role", "group");
+  calibration.setAttribute("aria-label", "Distance calibration");
+  const calibrationStatus = document.createElement("small");
+  for (const slot of [1, 2, 0]) {
+    const button = document.createElement("button");
+    button.type = "button"; button.className = "mix-button";
+    button.textContent = slot ? "Capture " + slot : "Reset";
+    button.title = slot ? "Calibrate angle " + slot + " against the simulated surface" : "Reset distance calibration";
+    button.setAttribute("aria-label", button.title);
+    button.addEventListener("click", () => {
+      if (!current) return;
+      try {
+        if (slot) {
+          calibrateVL53L0X(current.node, slot, {
+            offline: current.offline, sensor: current.sensors?.vl53l0x,
+            telemetryAgeMs: current.telemetryAgeMs,
+            direction: GhostSensor.sensorRay(current.nodes, current.index, current.worldPoint)?.direction,
+            simulated: current.measureSensor(current.index)
+          });
+        } else {
+          current.node.calibrationGain1 = current.node.calibrationGain2 = 0;
+          vl53l0xScan(current.node).points.length = 0;
+        }
+        calibrationStatus.textContent = (slot ? "Angle " + slot + " captured." : "Calibration reset.") + " Save robot in Setup to keep.";
+        sync(); current.redraw?.();
+      } catch (error) {
+        calibrationStatus.textContent = error.message;
+        const bar = document.getElementById("connectionError");
+        if (bar) bar.textContent = "Sensor calibration: " + error.message;
+      }
+    });
+    calibration.append(button);
+  }
+  calibration.append(calibrationStatus);
+  const calibrationHeading = document.createElement("span");
+  calibrationHeading.className = "distance-calibration-heading";
+  calibrationHeading.textContent = "Calibration";
+  calibration.append(calibrationHeading);
   power.addEventListener("click", () => {
     expanded = !expanded;
     sync(); current?.redraw?.();
   });
-  element.append(category, heading, value, caption, actions, count, power, config, clear);
+  element.append(category, heading, value, caption, actions, count, power, config, clear, calibration);
   sync();
   return { element, update(context) {
     current = context;
@@ -193,7 +296,7 @@ function createVL53L0XPanel({ openSettings } = {}) {
     } else {
       caption.textContent = "Physical VL53L0X · I²C 0x29";
       const sensor = sensors?.vl53l0x;
-      measured = vl53l0xDistance(node, sensor, telemetryAgeMs);
+      measured = vl53l0xDistance(node, sensor, telemetryAgeMs, GhostSensor.sensorRay(nodes, index, worldPoint)?.direction);
       value.textContent = !sensor ? "Waiting for sensor" : !sensor.ready ? "Unavailable" :
         telemetryAgeMs > 3000 ? "Stale reading" :
         measured === null ? "Invalid reading" : Number(measured.toFixed(3)) + " mm";

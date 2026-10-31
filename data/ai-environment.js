@@ -7,16 +7,17 @@
     let state = seed >>> 0;
     return () => { state += 0x6D2B79F5; let value=state; value=Math.imul(value^value>>>15,value|1); value^=value+Math.imul(value^value>>>7,value|61); return ((value^value>>>14)>>>0)/4294967296; };
   }
-  function create({RAPIER, nodes:sourceNodes, task:sourceTask, registry, worldPoint:kinematicPoint, rotatePoint, physicsNodes, physicsShapes}) {
+  function create({RAPIER, nodes:sourceNodes, task:sourceTask, registry, worldPoint:kinematicPoint, rotatePoint, physicsNodes, physicsShapes,acceleratedSensing=true}) {
     const original = clone(sourceNodes), task = clone(sourceTask);
     const dt=1/120, ticksPerAction=6, maxTicks=Math.ceil(task.episodeSeconds/dt), holdTicksNeeded=Math.ceil(task.holdSeconds/dt);
     let physics=null,nodes,descriptors,ticks=0,heldTicks=0,episodeJointTravelDegrees=0,done=true,disposed=false,commands=[],lastAngles=[],velocities=[];
     const topology='isolated-learning-rig';
     const encoder=scope.GhostLearningPolicy.createEncoder(task.joints);
     const rewardModel=scope.GhostLearningReward.create({targetIndex:task.targetIndex,holdSeconds:task.holdSeconds});
-    let previousAction=null,jointMeasurements=[];
+    let previousAction=null,jointMeasurements=[],preparedSensor=null;
+    const poseCache=new Map();
     const assertAlive=()=>{if(disposed)throw new Error("Training environment has been disposed.");};
-    function worldPoint(items,index,point,shaft=false) {
+    function uncachedWorldPoint(items,index,point,shaft=false) {
       if(index===task.targetIndex) return point.map((value,i)=>value+task.targetWorld[i]);
       const node=items[index];
       if(!registry.getPhysics(node).real) {
@@ -25,6 +26,14 @@
         return node.parent===null?point:worldPoint(items,node.parent-1,registry.childMountPoint(items[node.parent-1],point),registry.attachment(items,index).parentSide==='shaft');
       }
       return physics.point(index,point,shaft) ?? kinematicPoint(items,index,point,shaft);
+    }
+    function worldPoint(items,index,point,shaft=false){
+      const key=index*2+(shaft?1:0);let pose=poseCache.get(key);
+      if(!pose){
+        const origin=uncachedWorldPoint(items,index,[0,0,0],shaft),axes=[0,1,2].map(axis=>sub(uncachedWorldPoint(items,index,[0,1,2].map(i=>i===axis?1:0),shaft),origin));
+        pose={origin,axes};poseCache.set(key,pose);
+      }
+      return pose.origin.map((value,i)=>value+point[0]*pose.axes[0][i]+point[1]*pose.axes[1][i]+point[2]*pose.axes[2][i]);
     }
     function angles() {
       return jointMeasurements.map(measurement=>{
@@ -38,7 +47,7 @@
         measurement.delta=delta;return command+sign*delta*180/Math.PI;
       });
     }
-    const reading=()=>scope.GhostSensor.read({nodes,index:task.sensorIndex,worldPoint,registry});
+    const reading=()=>preparedSensor?preparedSensor.read({index:task.sensorIndex,worldPoint}):scope.GhostSensor.read({nodes,index:task.sensorIndex,worldPoint,registry});
     function alignment(sample) {
       if(!sample.origin||!sample.direction)return 0;
       const delta=sub(task.targetWorld,sample.origin),length=Math.hypot(...delta);
@@ -59,7 +68,7 @@
         assertAlive();
         if(!Number.isInteger(seed)||!Number.isFinite(jitterDegrees)||jitterDegrees<0||jitterDegrees>30) throw new Error("Use an integer seed and startup jitter between 0 and 30 degrees.");
         if(initialAngles && (initialAngles.length!==2 || initialAngles.some((angle,i)=>!Number.isFinite(angle)||angle<task.joints[i].min||angle>task.joints[i].max))) throw new Error("Initial angles must respect the two joint limits.");
-        physics?.destroy();physics=null;done=true;
+        physics?.destroy();physics=null;poseCache.clear();done=true;
         try {
           nodes=clone(original);const random=randomSeed(seed);
           commands=task.joints.map((joint,i)=>initialAngles?.[i]??Math.max(joint.min,Math.min(joint.max,joint.startup+(random()*2-1)*jitterDegrees)));
@@ -67,6 +76,7 @@
           nodes.forEach(node=>{node.outputEnabled=node.enabled!==false;});
           task.joints.forEach((joint,i)=>{nodes[joint.index].angle=commands[i];nodes[joint.index].motion=null;});
           nodes[task.targetIndex].parent=null;nodes[task.targetIndex].position=[...task.targetWorld];nodes[task.targetIndex].rotation=[0,0,0];
+          preparedSensor=acceleratedSensing?scope.GhostSensor.prepareScene({nodes,registry}):null;
           physics=scope.GhostPhysics.create(RAPIER,{fixedBaseIndex:task.rootIndex});
           descriptors=physicsNodes(nodes);
           for(const descriptor of descriptors) {
@@ -83,7 +93,7 @@
           });
           physics.syncRobot(descriptors,physicsShapes(nodes),topology);
           // Settling is deterministic and excluded from episode time and success credit.
-          physics.stepFixed(120);
+          physics.stepFixed(120);poseCache.clear();
           ticks=0;heldTicks=0;episodeJointTravelDegrees=0;done=false;previousAction=null;lastAngles=angles();velocities=[0,0];
           if(!lastAngles.every(Number.isFinite)) throw new Error("Non-finite joint state after reset.");
           const sample=reading();
@@ -111,7 +121,7 @@
               node.angle+=Math.max(-60*dt,Math.min(60*dt,difference));
               descriptors.find(descriptor=>descriptor.index===joint.index).target=(node.angle-90)*Math.PI/180;
             });
-            physics.syncRobot(descriptors,[],topology);physics.stepFixed(1);ticks++;
+            physics.syncRobot(descriptors,[],topology);physics.stepFixed(1);poseCache.clear();ticks++;
             const next=angles();sample=reading();
             const invalid=!next.every(Number.isFinite)||sample.reason==='invalid-ray';
             const actualTravel=invalid?0:next.reduce((total,angle,i)=>total+Math.abs(angle-lastAngles[i]),0);

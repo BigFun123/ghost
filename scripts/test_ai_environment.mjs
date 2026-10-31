@@ -92,3 +92,10 @@ test('real physics acquisition outscores idle, oscillation and joint-limit pushi
     console.log('Episode returns:',{acquired:success.info.episodeReward,idle:idle.info.episodeReward,oscillation:oscillation.info.episodeReward,limitPushing:limits.info.episodeReward,random:random.info.episodeReward});
   }finally{env.dispose();}
 });
+
+test('accelerated sensing preserves real Rapier observations, rewards and termination',()=>{
+ const f=fixture();f.task.episodeSeconds=1.5;
+ const fast=GhostLearningEnvironment.create({...f,acceleratedSensing:true}),reference=GhostLearningEnvironment.create({...f,acceleratedSensing:false});
+ const compare=(a,b)=>{assert.equal(a.terminated,b.terminated);assert.equal(a.truncated,b.truncated);assert.equal(a.info.reason,b.info.reason);assert.deepEqual(a.info.hit,b.info.hit);assert.equal(a.observation.sensor.valid,b.observation.sensor.valid);if(a.observation.sensor.valid)assert(Math.abs(a.observation.sensor.distanceMm-b.observation.sensor.distanceMm)<1e-6);assert(Math.abs(a.reward-b.reward)<1e-8);a.observation.policyVector.forEach((v,i)=>assert(Math.abs(v-b.observation.policyVector[i])<1e-8));};
+ try{for(let run=0;run<4;run++){const resetOptions=run%2?{initialAngles:f.task.solution.angles}:{jitterDegrees:5};compare(fast.reset(100+run,resetOptions),reference.reset(100+run,resetOptions));for(let tick=0;tick<32;tick++){const action=run===1?0:tick%5,a=fast.step(action),b=reference.step(action);compare(a,b);if(a.terminated||a.truncated)break;}}}finally{fast.dispose();reference.dispose();}
+});
