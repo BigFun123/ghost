@@ -8,3 +8,4 @@ include/WifiCredentials.h
 
 # Local trained-policy artifacts (outside controller filesystem assets).
 /training/
+training
