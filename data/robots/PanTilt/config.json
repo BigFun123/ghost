@@ -157,7 +157,11 @@
       "idleCurrentAmps": null,
       "runningCurrentAmps": null,
       "peakCurrentAmps": null,
-      "distanceMultiplier": 1
+      "distanceMultiplier": 1,
+      "calibrationAngle1": 0,
+      "calibrationAngle2": 0,
+      "calibrationGain1": 0,
+      "calibrationGain2": 0
     },
     {
       "minPowerWatts": null,
@@ -190,9 +194,9 @@
       "objectType": "Target",
       "parent": null,
       "position": {
-        "x": 150,
-        "y": 40,
-        "z": 0
+        "x": 115,
+        "y": 105,
+        "z": -85
       },
       "rotation": {
         "x": 0,
@@ -228,13 +232,13 @@
     }
   ],
   "camera": {
-    "yaw": -0.6,
-    "pitch": 0.45,
+    "yaw": -0.84,
+    "pitch": 0.75,
     "roll": 0,
-    "zoom": 1.50946530104016,
-    "panX": 100,
-    "panY": 5,
-    "panZ": 0,
+    "zoom": 1.9577559373201885,
+    "panX": 115,
+    "panY": 75,
+    "panZ": -55,
     "perspective": false,
     "showGrid": true,
     "views": {},

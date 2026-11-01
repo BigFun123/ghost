@@ -204,7 +204,7 @@
 
     document.getElementById('aiPolicyName').disabled=policyIO;
     document.getElementById('aiLearningTargetSelect').disabled=!!trainingRun||!!baselineRun||!!autoRun||policyIO||initializing;
-    const busy=!!baselineRun||!!trainingRun||policyIO||!!autoRun||initializing;
+    const busy=!!baselineRun||!!trainingRun||policyIO||!!autoRun||initializing||!!globalThis.GhostSequenceAI?.running();
     document.getElementById('aiTrainingAuto').disabled=busy;
     document.getElementById('aiAutoBatches').disabled=busy;
     document.getElementById('aiAutoEarlyStop').disabled=busy;
@@ -215,6 +215,7 @@
     document.getElementById("aiTestRun").disabled=!environment||!policy||busy;
     document.getElementById("aiTestStop").disabled=trainingRun?.kind!=='test'||trainingRun.cancelled;
     for(const id of ['Pan','Tilt'])document.getElementById('aiTest'+id).disabled=!environment||busy;
+    for(const id of ['PanMinus','PanPlus','TiltMinus','TiltPlus','Random'])document.getElementById('aiTest'+id).disabled=!environment||busy;
     for (const id of ["Reset", "Step", "Stop"]) document.getElementById("aiLearning" + id).disabled = (!environment&&!autoRun) || (id!=="Stop"&&busy);
     document.getElementById("aiBaselineRun").disabled=!environment||busy;
     document.getElementById("aiBaselineCancel").disabled=!baselineRun;
@@ -338,19 +339,23 @@
     document.getElementById("aiBaselineEpisodes").replaceChildren();
     displayBaselineSummary(latestSummary,stageId+" / "+split);
     setText("aiLearningStatus","Evaluating sensor-only raster baseline...");
-    log("Raster settings: "+stageId+" / "+split+" / "+count+" episode(s) / "+options.task.episodeSeconds+" s limit / "+options.task.holdSeconds+" s hold / 2-degree rows.");
+    log("Raster settings: "+stageId+" / "+split+" / "+count+" episode(s) / "+options.task.episodeSeconds+" s limit / "+options.task.holdSeconds+" s hold / coarse-to-fine rows.");
     const current=()=>{
       if(run.cancelled||revision!==generation)return false;
       const latest=scene();if(!latest.offline||latest.fingerprint!==initializedScene){stopEnvironment();setText("aiLearningStatus","Setup changed; initialize again");return false;}return true;
     };
     try{
+      if(!GhostLearningCurriculum.stages.some(stage=>stage.id===stageId))throw new Error('Invalid Reference Scan stage '+JSON.stringify(stageId)+'. Select a curriculum stage again.');
+      if(!['training','evaluation'].includes(split))throw new Error('Invalid Reference Scan seed split '+JSON.stringify(split)+'. Select Training cases or Held-out evaluation.');
+      const available=GhostLearningCurriculum.seeds[split].length;
+      if(!Number.isInteger(count)||count<1||count>available)throw new Error('Reference Scan episode count must be between 1 and '+available+'.');
       const result=await GhostBaselineEvaluation.run({count,
         shouldStop:()=>!current(),
         makeCase:index=>GhostLearningCurriculum.makeCase({stageId,split,index,nodes:options.nodes,task:options.task,registry:componentRegistry,worldPoint:servoWorldPoint}),
         createEnvironment:scenario=>{run.environment=GhostLearningEnvironment.create({...options,task:scenario.task});return run.environment;},
         onFrame:frame=>{
           if(!current())return;
-          if(frame.phase==='reset')log('Raster reset seed '+frame.scenario.seed+': actual '+frame.result.observation.jointAnglesDegrees.map(angle=>angle.toFixed(2)).join(' / ')+' degrees; raster will home to the lower limits next.');
+          if(frame.phase==='reset')log('Raster reset seed '+frame.scenario.seed+': actual '+frame.result.observation.jointAnglesDegrees.map(angle=>angle.toFixed(2)).join(' / ')+' degrees; coarse-to-fine search begins at this pose without homing.');
           runSnapshot={...frame.snapshot,mode:'baseline',baselinePhase:frame.controller?.phase,baselineRunning:true};reportEnvironment(frame.result,true);
           setText("aiBaselineProgress","Episode "+(frame.index+1)+"/"+count+" · seed "+frame.scenario.seed+" · "+frame.result.info.simulationSeconds.toFixed(2)+" simulated s");
         },
@@ -415,7 +420,7 @@
         const response=await fetch('/api/training/policies',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,policy:record})});
         if(!response.ok)throw new Error(await response.text());
         const saved=await response.json();if(revision!==generation)return;
-        setText('aiPolicyFileStatus','Saved to '+saved.path);log('Policy saved locally: '+saved.path+'. Loading restores weights; optimizer and rollout state restart.');return true;
+        setText('aiPolicyFileStatus','Saved to '+saved.path+(saved.backup?' / previous version backed up to '+saved.backup:''));log('Policy saved locally: '+saved.path+'. Loading restores weights; optimizer and rollout state restart.');return true;
       }
       const url=URL.createObjectURL(new Blob([JSON.stringify(record)],{type:'application/json'})),link=document.createElement('a');
       link.href=url;link.download=name+'.json';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
@@ -469,6 +474,18 @@
       updateEnvironmentControls();
     }
   }
+  function setTestAngle(index,delta,random=false){
+    const input=document.getElementById(index?'aiTestTilt':'aiTestPan'),joint=task?.joints[index];
+    if(input.disabled||!joint)return;
+    const current=input.value.trim()===''?joint.startup:Number(input.value);
+    const value=random?joint.min+Math.random()*(joint.max-joint.min):(Number.isFinite(current)?current:joint.startup)+delta;
+    input.value=Math.max(joint.min,Math.min(joint.max,Math.round(value*10)/10));
+  }
+  for(const [index,axis] of ['Pan','Tilt'].entries()){
+    document.getElementById('aiTest'+axis+'Minus').addEventListener('click',()=>setTestAngle(index,-5));
+    document.getElementById('aiTest'+axis+'Plus').addEventListener('click',()=>setTestAngle(index,5));
+  }
+  document.getElementById('aiTestRandom').addEventListener('click',()=>{setTestAngle(0,0,true);setTestAngle(1,0,true);});
   document.getElementById('aiTestRun').addEventListener('click',()=>runPolicyTest());
   document.getElementById('aiTestStop').addEventListener('click',()=>{
     if(trainingRun?.kind!=='test')return;if(autoRun)autoRun.cancelled=true;const revision=generation;trainingRun.cancelled=true;updateEnvironmentControls();setText('aiTestStatus','Stopping test; policy will be retained.');
@@ -509,7 +526,7 @@
         if(!policy)throw new Error("Train a policy before evaluation.");
         const monitored=kind==='monitor'||kind==='qualify',count=monitored?50:Number(document.getElementById("aiBaselineCount").value);setText("aiPolicyState","EVALUATING");setText("aiLearningStatus","Evaluating frozen PPO policy");setText("aiTrainingProgress","Evaluating frozen policy on ordinary held-out starts...");
         run.started=true;setText("aiPPOComparison",kind==='monitor'?"Monitoring 50 clean-v1 cases; no training weights change.":"Running PPO, then raster on the identical held-out cases...");updateEnvironmentControls();
-        const outcome=await worker.request(monitored?kind:'evaluate',{stageId,count},(event,data)=>{if(event==='frame')onFrame(data);else if(event==='convergence'&&current())showConvergence(data);else if(event==='phase'&&current()){setText("aiTrainingProgress",data);setText("aiPolicyState",String(data).toLowerCase().includes('raster')?"COMPARING":"EVALUATING");}else if(event==='baseline-frame'&&current()){if(data.phase==='reset')log('Raster reset seed '+data.scenario.seed+': actual '+data.result.observation.jointAnglesDegrees.map(angle=>angle.toFixed(2)).join(' / ')+' degrees. Raster next homes to the lower joint limits; this counts toward the episode.');runSnapshot={...data.snapshot,mode:'baseline',baselinePhase:data.controller?.phase,baselineRunning:true};reportEnvironment(data.result,true);}});
+        const outcome=await worker.request(monitored?kind:'evaluate',{stageId,count},(event,data)=>{if(event==='frame')onFrame(data);else if(event==='convergence'&&current())showConvergence(data);else if(event==='phase'&&current()){setText("aiTrainingProgress",data);setText("aiPolicyState",String(data).toLowerCase().includes('raster')?"COMPARING":"EVALUATING");}else if(event==='baseline-frame'&&current()){if(data.phase==='reset')log('Raster reset seed '+data.scenario.seed+': actual '+data.result.observation.jointAnglesDegrees.map(angle=>angle.toFixed(2)).join(' / ')+' degrees. Coarse-to-fine reference search starts from this pose without homing.');runSnapshot={...data.snapshot,mode:'baseline',baselinePhase:data.controller?.phase,baselineRunning:true};reportEnvironment(data.result,true);}});
         if(revision===generation){
           if(outcome.convergence)showConvergence(outcome.convergence);
           const successes=outcome.episodes.filter(episode=>episode.reason==='success'),rate=outcome.episodes.length?Math.round(100*successes.length/outcome.episodes.length):0;
@@ -576,7 +593,7 @@
   });
   globalThis.addEventListener?.("beforeunload",stopEnvironment);
   document.getElementById("aiLearningClear").addEventListener("click", () => output.replaceChildren());
-  globalThis.GhostLearning = { refresh, log, stopEnvironment, getTask() { refresh(); return task ? JSON.parse(JSON.stringify(task)) : null; } };
+  globalThis.GhostLearning = { refresh, log, stopEnvironment, updateControls:updateEnvironmentControls, isBusy:()=>!!trainingRun||!!baselineRun||!!autoRun||policyIO||initializing, getTask() { refresh(); return task ? JSON.parse(JSON.stringify(task)) : null; } };
   log("AI Learning ready. Load the PanTilt robot in Offline simulation, then initialize its setup.");
   refresh();
 })();

@@ -71,6 +71,13 @@
     const extent=Math.max(200,Math.ceil(radius/50)*100),grid=Math.max(10,Math.ceil(extent/400)*10);
     for(let value=-extent;value<=extent;value+=grid){const major=value%(grid*5)===0;line([value,0,-extent],[value,0,extent],major?'#2b4b5b':'#19323f',major?.7:.4);line([-extent,0,value],[extent,0,value],major?'#2b4b5b':'#19323f',major?.7:.4);}
     if(!snapshot)return;
+    // Ground tint stays behind robot meshes and sensor rays.
+    for(const cell of snapshot.cells??[]){
+      if(!cell.goalReached)continue;
+      const [x,y,z]=cell.origin,half=snapshot.gridSpacing*.47;
+      const corners=[[x-half,y,z-half],[x+half,y,z-half],[x+half,y,z+half],[x-half,y,z+half]].map(project);
+      ctx.beginPath();corners.forEach((p,i)=>i?ctx.lineTo(p[0],p[1]):ctx.moveTo(p[0],p[1]));ctx.closePath();ctx.fillStyle='#bd8c4938';ctx.fill();
+    }
     renderPreviewFaces(ctx,faces.map(face=>({points:face.vertices.map(project),color:face.color,outline:face.outline})),canvas.width,canvas.height,ratio);
     for(const reading of snapshot.readings??[snapshot.reading]){
     if(reading?.origin&&reading.direction){
@@ -89,7 +96,7 @@
     for(const cell of snapshot.cells??[]){
       const [x,y,z]=cell.origin,half=snapshot.gridSpacing*.47;
       const corners=[[x-half,y,z-half],[x+half,y,z-half],[x+half,y,z+half],[x-half,y,z+half]];
-      corners.forEach((point,index)=>line(point,corners[(index+1)%4],'#416575',.8));
+      corners.forEach((point,index)=>line(point,corners[(index+1)%4],cell.goalReached?'#a58b60':'#416575',.8));
       const point=project([x-half,y,z-half]);ctx.font='10px ui-monospace, Consolas, monospace';ctx.fillStyle='#a7e9dc';if(snapshot.gridCount<=64||zoom>=2||cell.index%16===0)ctx.fillText(cell.label,point[0]+4,point[1]-5);
     }
     // Quiet corner brackets anchor the view without a moving HUD.
@@ -111,13 +118,20 @@
       poses.push(...replica.poses.map(pose=>Object.fromEntries(['body','shaft'].map(kind=>[kind,{...pose[kind],origin:shift(pose[kind].origin)}]))));
       if(replica.reading?.origin)readings.push({...replica.reading,origin:shift(replica.reading.origin),point:replica.reading.point?shift(replica.reading.point):null});
       if(Number.isInteger(replica.targetIndex))targets.push(base+replica.targetIndex);
-      cells.push({index,origin:offset,label:'E'+String(index+1).padStart(2,'0')});
+      cells.push({index,origin:offset,label:'E'+String(index+1).padStart(2,'0'),goalReached:!next.gridPreview&&replica.goalReached===true});
     });
     return {...next,nodes,poses,reading:null,targetIndex:null,readings,targets,cells,gridCount:count,gridSpacing};
   }
   function show(next) {
     next=next?.replicas?grid(next):next;
     canvas.parentElement?.classList?.toggle('ai-grid-viewport',!!next?.gridCount);
+    const alignment=document.getElementById('aiAlignmentValue');
+    if(alignment){
+      const measured=!!next&&!next.gridPreview&&(!!next.gridCount||typeof next.goalReached==='boolean');
+      const total=next?.gridCount??1,successes=next?.gridCount?next.cells.filter(cell=>cell.goalReached).length:(next?.goalReached?1:0);
+      alignment.textContent=measured?successes+'/'+total+' ('+Math.round(successes/total*100)+'%)':'—';
+      alignment.setAttribute?.('aria-label',measured?'Alignment: '+successes+' of '+total+' robots achieved their goal in their latest episode ('+Math.round(successes/total*100)+' percent)':'Alignment not measured');
+    }
     snapshot=next;document.getElementById('aiLearningViewEmpty').hidden=!!next?.nodes.length;
     if(!next?.nodes.length){faces=[];points=[];draw();return;}
     geometry();const key=next.nodes.map(node=>node.name+':'+node.position.join(',')).join('|');
@@ -125,7 +139,7 @@
     const baseline=next.mode==='baseline',policy=next.mode==='training'||next.mode==='policy-eval'||next.mode==='policy-test',isolated=next.mode==='isolated'||baseline||policy;
     document.getElementById('aiLearningViewMode').textContent=next.mode==='policy-test'?(next.policyRunning?'POLICY / TESTING':'POLICY / TEST FINISHED'):policy?(next.mode==='policy-eval'?(next.policyRunning?'POLICY / EVALUATION':'POLICY / READY'):next.policyPaused?'PPO / PAUSED':next.policyRunning?'PPO / TRAINING':'PPO / READY'):baseline?(next.baselineRunning?(['pan-home','tilt-home'].includes(next.baselinePhase)?'RASTER / HOMING':'RASTER / RUNNING'):'RASTER / FINISHED'):isolated?'ISOLATED / PAUSED':'RIG PREVIEW';
     if(next.gridCount)document.getElementById('aiLearningViewMode').textContent=(next.gridPreview?'GRID PREVIEW':next.policyPaused?'PPO / PAUSED':next.policyRunning?'PPO / TRAINING':'PPO / READY')+' / '+next.gridCount+' WORLDS';
-    document.getElementById('aiLearningViewHint').textContent=next.gridCount?next.gridCount+' isolated worlds / telemetry E01 / '+(next.gridCount>=64?'overview geometry / ':'')+'display-only offsets / drag to orbit':isolated?'Actual physics pose · drag to orbit':'Configured pose · initialize for isolated physics';
+    document.getElementById('aiLearningViewHint').textContent=next.gridCount?next.gridCount+' isolated worlds / '+(next.gridPreview?'':next.cells.filter(cell=>cell.goalReached).length+'/'+next.gridCount+' last episodes acquired (warm floors) / ')+'telemetry E01 / '+(next.gridCount>=64?'overview geometry / ':'')+'display-only offsets / drag to orbit':isolated?'Actual physics pose · drag to orbit':'Configured pose · initialize for isolated physics';
   }
   canvas.addEventListener('pointerdown',event=>{drag=[event.clientX,event.clientY];canvas.setPointerCapture(event.pointerId);});
   canvas.addEventListener('pointermove',event=>{if(!drag)return;yaw+=(event.clientX-drag[0])*.008;pitch=Math.max(-1.3,Math.min(1.3,pitch+(event.clientY-drag[1])*.008));drag=[event.clientX,event.clientY];draw();});
@@ -133,6 +147,7 @@
   canvas.addEventListener('wheel',event=>{event.preventDefault();zoom=Math.max(.2,Math.min(8,zoom*Math.exp(-event.deltaY*.001)));draw();},{passive:false});
   canvas.addEventListener('keydown',event=>{const keys=['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','+','=','-'];if(!keys.includes(event.key))return;event.preventDefault();if(event.key==='ArrowLeft')yaw-=.1;if(event.key==='ArrowRight')yaw+=.1;if(event.key==='ArrowUp')pitch=Math.min(1.3,pitch+.1);if(event.key==='ArrowDown')pitch=Math.max(-1.3,pitch-.1);if(['+','='].includes(event.key))zoom=Math.min(8,zoom*1.1);if(event.key==='-')zoom=Math.max(.2,zoom/1.1);draw();});
   document.getElementById('aiLearningFrame').addEventListener('click',()=>{yaw=-.65;pitch=.42;frame();});
+  document.getElementById('aiLearningTop').addEventListener('click',()=>{yaw=0;pitch=Math.PI/2;frame();});
   new ResizeObserver(()=>draw()).observe(canvas);
   scope.GhostLearningView={show,draw};
 })(globalThis);

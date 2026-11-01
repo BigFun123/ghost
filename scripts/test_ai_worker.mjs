@@ -50,6 +50,7 @@ test('real worker trains, pauses, stops, round-trips policies and rejects incomp
     assert.equal((await client.request('inspect')).policy.optimizerSteps,optimizerSteps);
     const repeated=await client.request('monitor',{stageId:'nearby'});assert.equal(repeated.convergence.windows,1,'same checkpoint cannot inflate stability evidence');
     const monitoredRecord=await client.request('save');assert.equal(monitoredRecord.training.monitoring.rows.length,1);
+    assert.equal(monitoredRecord.summary.cases,50);assert.equal(monitoredRecord.summary.successPercent,Math.round(monitored.convergence.rate*10000)/100);assert.equal(monitoredRecord.summary.status,monitored.convergence.status);assert.equal(monitoredRecord.summary.completedUpdates,monitoredRecord.training.completedUpdates);
     await assert.rejects(client.request('qualify',{stageId:'nearby'}),/Pass monitoring/);
     await client.request('restore-best');assert.deepEqual(await client.request('predict',{vector}),after);
     const restoredBest=await client.request('save');assert.equal(restoredBest.training.monitoring.rows[0].complete,false,'restored history is archival');

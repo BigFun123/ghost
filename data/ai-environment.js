@@ -146,7 +146,7 @@
           const axes=[0,1,2].map(axis=>sub(physics?worldPoint(items,index,[0,1,2].map(i=>i===axis?1:0),shaft):kinematicPoint(items,index,[0,1,2].map(i=>i===axis?1:0),shaft),origin));
           return [shaft?'shaft':'body',{origin,axes}];
         })));
-        return {nodes:clone(items),poses,targetWorld:[...task.targetWorld],baseWorld:physics?worldPoint(nodes,task.rootIndex,[0,0,0]):null,physicsTicks:ticks,sensorIndex:task.sensorIndex,targetIndex:task.targetIndex,reading:physics?reading():null,mode:'isolated'};
+        return {goalReached:done&&heldTicks>=holdTicksNeeded,nodes:clone(items),poses,targetWorld:[...task.targetWorld],baseWorld:physics?worldPoint(nodes,task.rootIndex,[0,0,0]):null,physicsTicks:ticks,sensorIndex:task.sensorIndex,targetIndex:task.targetIndex,reading:physics?reading():null,mode:'isolated'};
       },
       dispose() {if(disposed)return;physics?.destroy();physics=null;disposed=true;done=true;}
     };

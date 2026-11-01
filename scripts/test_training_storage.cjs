@@ -5,7 +5,7 @@ require('../data/ai-ppo');const files=require('../data/ai-policy-file');
 const {createServer}=require('../devserver/server');
 const {savePolicy}=require('../devserver/training-storage');
 
-test('local policy saves preserve real weights, never overwrite, and reject malformed or unsafe requests',async()=>{
+test('local policy saves keep a stable name, back up the previous version, and reject malformed or unsafe requests',async()=>{
   await tf.setBackend('cpu');await tf.ready();
   const agent=GhostPPO.create({tf}),policy=files.save({agent,context:{fixture:true}});agent.dispose();
   const workspace=path.resolve(__dirname,'..'),root=fs.mkdtempSync(path.join(workspace,'.tmp-training-'));
@@ -17,9 +17,17 @@ test('local policy saves preserve real weights, never overwrite, and reject malf
   try{
     assert.equal((await(await fetch(base+'/api/devserver')).json()).trainingPolicyStorage,true);
     const first=await save({name:'PanTilt',policy});assert.equal(first.status,201);const one=await first.json();
-    const second=await save({name:'PanTilt',policy});assert.equal(second.status,201);const two=await second.json();
-    assert.equal(one.filename,'PanTilt.json');assert.equal(two.filename,'PanTilt-2.json');assert.notEqual(one.filename,two.filename);assert.equal(one.path,'training/'+one.filename);
-    assert.deepEqual(JSON.parse(fs.readFileSync(path.join(training,one.filename),'utf8')),policy);
+    const newest={...policy,summary:{...policy.summary,successPercent:92,status:'Improving / unstable'},training:{completedUpdates:12}};
+    const second=await save({name:'PanTilt',policy:newest});assert.equal(second.status,201);const two=await second.json();
+    assert.equal(one.filename,'PanTilt.json');assert.equal(two.filename,'PanTilt.json');assert.equal(one.filename,two.filename);assert.equal(one.backup,null);assert(two.backup.startsWith('training/backups/PanTilt--'));assert.deepEqual(JSON.parse(fs.readFileSync(path.join(training,'backups',path.basename(two.backup)),'utf8')),policy);assert.equal(one.path,'training/'+one.filename);
+    assert.deepEqual(JSON.parse(fs.readFileSync(path.join(training,one.filename),'utf8')),newest);
+    const listed=await(await fetch(base+'/api/training/policies')).json();assert.deepEqual(listed.map(item=>item.filename),['PanTilt.json']);
+    assert.deepEqual(await(await fetch(base+'/api/training/policy?file='+encodeURIComponent(one.filename))).json(),newest);
+    assert.equal((await fetch(base+'/api/training/policy?file=../config.json')).status,400);
+    const aiSequence={loop:false,finish:true,steps:[{type:'ai',policy:'file:PanTilt.json'}]};
+    assert.equal((await fetch(base+'/api/sequence/a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(aiSequence)})).status,200);
+    assert.deepEqual((await(await fetch(base+'/api/sequence/a')).json()).steps,aiSequence.steps);
+    assert.equal((await fetch(base+'/api/sequence/a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...aiSequence,steps:[{type:'ai',policy:'../escape'}]})})).status,400);
     assert.equal((await save({name:'../escape',policy})).status,400);
     const bad=structuredClone(policy);bad.network.weights[0].values[0]=1e100;
     assert.equal((await save({name:'PanTilt',policy:bad})).status,400);
@@ -29,6 +37,12 @@ test('local policy saves preserve real weights, never overwrite, and reject malf
     const malformed=await fetch(base+'/api/training/policies',{method:'POST',headers:{'Content-Type':'application/json'},body:'{'});assert.equal(malformed.status,400);
     assert.equal((await save({name:'PanTilt',policy,padding:'x'.repeat(2*1024*1024)})).status,413);
     assert.equal(fs.readdirSync(training).length,2);
+    for(const operation of ['copyFileSync','renameSync']){
+      const original=fs[operation];fs[operation]=()=>{throw new Error('Simulated save failure');};
+      try{assert.throws(()=>savePolicy(training,'PanTilt',policy),/Simulated save failure/);}finally{fs[operation]=original;}
+      assert.deepEqual(JSON.parse(fs.readFileSync(path.join(training,'PanTilt.json'),'utf8')),newest,'failed replacement preserves the current policy');
+      assert(!fs.readdirSync(training).some(name=>name.startsWith('.policy-')),'temporary files are cleaned');
+    }
     assert.equal((await fetch(base+'/'+one.path)).status,404,'Artifacts are not served from the controller assets root');
     assert.throws(()=>savePolicy(training,'C:\\escape',policy),/Invalid policy name/);
     for(const name of ['CON','LPT1.json','../escape',''])assert.throws(()=>savePolicy(training,name,policy),/Invalid policy name/);

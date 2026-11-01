@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { robotStorage } = require('./robot-storage');
 const { loadComponentRegistry, writeCatalog } = require('./component-registry');
-const { savePolicy, maxPolicyBytes } = require('./training-storage');
+const { savePolicy, listPolicies, readPolicy, maxPolicyBytes } = require('./training-storage');
 
 async function proxyShopRequest(request, response, target, send) {
   let body = Buffer.alloc(0);
@@ -147,6 +147,10 @@ function validateSequence(sequence, servoCount) {
   if (!sequence || typeof sequence.loop !== 'boolean' || (sequence.finish !== undefined && typeof sequence.finish !== 'boolean') || !Array.isArray(sequence.steps) || sequence.steps.length > 32) throw new Error('Expected a loop flag and at most 32 steps.');
   for (const step of sequence.steps) {
     if (step?.componentStates !== undefined) loadComponentRegistry().validateSequenceStates(step.componentStates);
+    if (step?.type === 'ai') {
+      if(typeof step.policy!=='string'||! /^[A-Za-z0-9][A-Za-z0-9 _.:\-]{0,119}$/.test(step.policy))throw new Error('Invalid AI policy reference.');
+      continue;
+    }
     if (step?.type === 'delay') {
       if (!Number.isInteger(step.durationMs) || step.durationMs < 1 || step.durationMs > 60000) throw new Error('Delay must be between 1 and 60000 milliseconds.');
       continue;
@@ -196,6 +200,11 @@ function createServer(dataDirectory = path.resolve(__dirname, '../data'), shopOr
       const robot = url.searchParams.get('robot') || storage.manifest().active;
       const configPath = storage.configPath(robot);
       if (request.method === 'GET' && url.pathname === '/api/devserver') return send(200, JSON.stringify({ localConfigServer: true, shopProxy: true, trainingPolicyStorage: true, robot }), mime['.json']);
+      if (request.method === 'GET' && url.pathname === '/api/training/policies') return send(200,JSON.stringify(listPolicies(trainingDirectory)),mime['.json']);
+      if (request.method === 'GET' && url.pathname === '/api/training/policy') {
+        try{return send(200,JSON.stringify(readPolicy(trainingDirectory,url.searchParams.get('file'))),mime['.json']);}
+        catch{return send(400,'Policy file is missing or invalid.');}
+      }
       if (request.method === 'POST' && url.pathname === '/api/training/policies') {
         if (!(request.headers['content-type'] || '').startsWith('application/json')) return send(415, 'Expected application/json.');
         const chunks = []; let size = 0;

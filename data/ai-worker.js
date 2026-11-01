@@ -94,7 +94,7 @@ importScripts('./ai-rig.js','./physics.js','./simulated-sensor.js','./ai-task.js
         lastEvaluation={stageId,revision,bank:bankId,split,...outcome,cancelled:outcome.cancelled||!!baseline?.cancelled,summary,baseline,qualified,convergence};
         if(type==='monitor'&&complete){
           const rank=summary.rate*1000-summary.invalid*100-summary.falseHolds*10-(summary.seconds??options.task.episodeSeconds)*.01;
-          if(!best||best.stageId!==stageId||rank>best.rank)best={rank,stageId,record:GhostPolicyFile.save({agent,context,training:{completedUpdates,trainingSteps,finalBankRuns,monitoring:monitor.export()},evaluation:lastEvaluation})};
+          if(!best||best.stageId!==stageId||rank>best.rank)best={rank,stageId,record:GhostPolicyFile.save({agent,context,convergence:monitor.state(),training:{completedUpdates,trainingSteps,finalBankRuns,monitoring:monitor.export()},evaluation:lastEvaluation})};
         }
         emit(id,'convergence',convergence);
         return {...lastEvaluation,cancelled:outcome.cancelled||!!baseline?.cancelled,convergence,qualified,policy:status()};
@@ -126,7 +126,7 @@ importScripts('./ai-rig.js','./physics.js','./simulated-sensor.js','./ai-task.js
         else if(type==='discard'){agent?.dispose();agent=null;completedUpdates=0;lastTraining=lastEvaluation=null;acquisition=null;acquisitionStage=null;monitor.clear();best=null;revision++;trainingSteps=0;finalBankRuns=0;trainingCaseIndex=0;result=null;}
         else if(type==='save'){
           if(!agent)throw new Error('No policy to save.');
-          result=payload.best&&best?best.record:GhostPolicyFile.save({agent,context,training:{completedUpdates,trainingSteps,finalBankRuns,optimizerSteps:agent.inspect().optimizerSteps,lastCompletedUpdate:lastTraining,monitoring:monitor.export()},evaluation:lastEvaluation});
+          result=payload.best&&best?best.record:GhostPolicyFile.save({agent,context,convergence:monitor.state(),training:{completedUpdates,trainingSteps,finalBankRuns,optimizerSteps:agent.inspect().optimizerSteps,lastCompletedUpdate:lastTraining,monitoring:monitor.export()},evaluation:lastEvaluation});
         }else if(type==='restore-best'){
           if(!best)throw new Error('No monitored checkpoint is available.');
           const replacement=GhostPolicyFile.load({tf,record:best.record,context});agent.dispose();agent=replacement;completedUpdates=best.record.training.completedUpdates;trainingSteps=best.record.training.trainingSteps;revision++;monitor.restore(best.record.training.monitoring);acquisition=null;acquisitionStage=null;lastTraining=null;trainingCaseIndex=0;lastEvaluation=best.record.evaluation;result={...status(),convergence:monitor.state()};

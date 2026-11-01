@@ -43,14 +43,14 @@
             slot.rows.push({observation:[...vectors[i]],action:sample.action,logProbability:sample.logProbability,value:sample.value,reward:result.reward,nextValue:bootstraps[i],terminated:result.terminated,truncated:result.truncated});
             slot.result=result;
             if(result.terminated||result.truncated){
-              ended=true;episodes++;if(result.info.reason==='success')successes++;
+              ended=true;episodes++;slot.lastOutcome=result.info.reason;if(result.info.reason==='success')successes++;
               onEpisode({environmentIndex:i,seed:slot.scenario.seed,reason:result.info.reason,reward:result.info.episodeReward,...summary()});
               timed=clock();slot.lastSnapshot=slot.environment.snapshot();profile.snapshotMs+=clock()-timed;slot.environment.dispose();slot.environment=null;
             }
           }
           if(shouldSnapshot?shouldSnapshot():tick%8===0||ended||tick===rolloutSteps-1){
             timed=clock();
-            const snapshots=slots.map(slot=>slot.environment?slot.environment.snapshot():slot.lastSnapshot),first=slots[0];
+            const snapshots=slots.map(slot=>({...(slot.environment?slot.environment.snapshot():slot.lastSnapshot),goalReached:slot.lastOutcome==='success'})),first=slots[0];
             profile.snapshotMs+=clock()-timed;
             onFrame({scenario:first.scenario,result:first.result,action:samples[0].action,snapshot:snapshots[0],replicas:environmentCount>1?snapshots:undefined,environmentCount,environmentIndex:0});
           }

@@ -65,7 +65,7 @@ test('evaluation counts false locks and reports successful-only median with time
 });
 
 // Regression: a 90-degree configured startup must not become raster homing on PPO reset.
-test('PPO nearby evaluation publishes the configured startup before actions; raster homes afterward',async()=>{
+test('PPO nearby evaluation publishes configured startup before actions; reference also starts without homing',async()=>{
   await import('../data/ai-training.js');
   const args=fixture();assert.equal(args.task.joints[0].startup,90);
   const scenario=curriculum.makeCase({...args,stageId:'nearby',split:'evaluation',index:0});
@@ -79,5 +79,17 @@ test('PPO nearby evaluation publishes the configured startup before actions; ras
   assert.equal(frames[1].phase,'first-action');assert.equal(frames[1].action,0);
   assert.equal(frames[1].result.info.commands[0],frames[0].result.info.commands[0],'Hold does not home to zero');
   const controller=globalThis.GhostRasterBaseline.create({joints:args.task.joints,holdSeconds:args.task.holdSeconds});
-  assert.equal(controller.status().phase,'pan-home');
+  assert.equal(controller.status().phase,'sweep');
+});
+
+test('coarse-to-fine reference finds an off-axis target from normal startup within ten seconds',async()=>{
+ const args=fixture();const result=await evaluation.run({count:1,yieldControl:async()=>{},makeCase:()=>({...curriculum.makeCase({...args,stageId:'nearby',split:'evaluation',index:0}),resetOptions:{initialAngles:args.task.joints.map(j=>j.startup),jitterDegrees:0}}),createEnvironment:scenario=>GhostLearningEnvironment.create({...args,task:scenario.task})});
+ assert.equal(result.summary.successes,1);assert(result.episodes[0].seconds<=10);
+});
+
+test('a continuous background does not repeatedly interrupt search with hold attempts',()=>{
+ const controller=raster.create({joints:[{min:0,max:180},{min:0,max:115}],holdSeconds:.1}),angles=[90,90];let moved=0;
+ for(let i=0;i<100;i++){const action=controller.act({jointAnglesDegrees:[...angles],sensor:{valid:true,distanceMm:120}});if(action){moved++;const joint=action<=2?0:1;angles[joint]+=action%2?-2:2;}}
+ assert.equal(controller.status().lockAttempts,1);assert(moved>80);
+ controller.act({jointAnglesDegrees:angles,sensor:{valid:false}});assert.equal(controller.act({jointAnglesDegrees:angles,sensor:{valid:true,distanceMm:120}}),0);assert.equal(controller.status().lockAttempts,2);
 });

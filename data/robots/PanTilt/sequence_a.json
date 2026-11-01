@@ -1,5 +1,52 @@
 {
   "loop": false,
   "finish": true,
-  "steps": []
+  "steps": [
+    {
+      "angles": [
+        3,
+        84
+      ],
+      "servoStates": [
+        20,
+        4
+      ],
+      "componentStates": [],
+      "durationMs": 2000
+    },
+    {
+      "type": "color",
+      "rgb": [
+        0,
+        0,
+        255
+      ],
+      "durationMs": 100
+    },
+    {
+      "angles": [
+        126,
+        94
+      ],
+      "servoStates": [
+        20,
+        4
+      ],
+      "componentStates": [],
+      "durationMs": 2000
+    },
+    {
+      "type": "color",
+      "rgb": [
+        0,
+        255,
+        255
+      ],
+      "durationMs": 100
+    },
+    {
+      "type": "ai",
+      "policy": "file:finder.json"
+    }
+  ]
 }

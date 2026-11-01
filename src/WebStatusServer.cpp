@@ -214,7 +214,7 @@ void WebStatusServer::begin(Pca9685ServoTest* servos,
                            "/ai-view.js", "/ai-baseline.js", "/ai-curriculum.js",
                            "/ai-evaluation.js", "/ai-ppo.js", "/ai-training.js",
                            "/ai-worker-client.js", "/ai-worker.js", "/ai-learning.js",
-                           "/ai-policy-file.js", "/ai-layout.js", "/ai-test-progress.js", "/ai-auto-training.js", "/ai-acquisition.js", "/ai-convergence.js"}) {
+                           "/ai-policy-file.js", "/ai-sequence.js", "/ai-layout.js", "/ai-test-progress.js", "/ai-auto-training.js", "/ai-acquisition.js", "/ai-convergence.js"}) {
     server_.on(path, HTTP_GET, [this, path]() {
       sendAsset(path, "application/javascript; charset=utf-8");
     });
@@ -436,6 +436,17 @@ void WebStatusServer::sendSequence() {
 
   const JsonArrayConst steps = document["steps"].as<JsonArrayConst>();
   for (JsonObjectConst step : steps) {
+    if (step["type"] == "ai") {
+      const String policy = step["policy"].is<const char*>() ? String(step["policy"].as<const char*>()) : String();
+      bool valid = policy.length() > 0 && policy.length() <= 120;
+      for (unsigned int i = 0; i < policy.length(); ++i) {
+        const char c = policy[i];
+        const bool alphaNumeric = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9');
+        if (!alphaNumeric && (i == 0 || (c != ' ' && c != '_' && c != '.' && c != ':' && c != '-'))) valid = false;
+      }
+      if (!valid) { server_.send(400, "text/plain", "Invalid AI policy reference"); return; }
+      continue;
+    }
     if (step["type"] == "delay") {
       if (!step["durationMs"].is<uint32_t>() ||
           step["durationMs"].as<uint32_t>() < 1 || step["durationMs"].as<uint32_t>() > 60000) {
@@ -550,6 +561,17 @@ void WebStatusServer::saveSequence() {
   }
 
   for (JsonObjectConst step : steps) {
+    if (step["type"] == "ai") {
+      const String policy = step["policy"].is<const char*>() ? String(step["policy"].as<const char*>()) : String();
+      bool valid = policy.length() > 0 && policy.length() <= 120;
+      for (unsigned int i = 0; i < policy.length(); ++i) {
+        const char c = policy[i];
+        const bool alphaNumeric = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9');
+        if (!alphaNumeric && (i == 0 || (c != ' ' && c != '_' && c != '.' && c != ':' && c != '-'))) valid = false;
+      }
+      if (!valid) { server_.send(400, "text/plain", "Invalid AI policy reference"); return; }
+      continue;
+    }
     if (step["type"] == "delay") {
       if (!step["durationMs"].is<uint32_t>() ||
           step["durationMs"].as<uint32_t>() < 1 || step["durationMs"].as<uint32_t>() > 60000) {

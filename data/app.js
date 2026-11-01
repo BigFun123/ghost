@@ -450,6 +450,14 @@ function stopSweep() {
   updateSequencerControls();
 }
 
+let sequencePolicies = [];
+async function refreshSequencePolicies() {
+  if (!globalThis.GhostSequenceAI) return [];
+  try { sequencePolicies = await GhostSequenceAI.list(); if (!sequencePlaying) renderSequence(); }
+  catch (error) { setText("sequencerError", error.message); }
+  return sequencePolicies;
+}
+
 function updateSequencerControls() {
   const allServosReady = servoControls.length > 0 &&
     servoControls.every(control => control.ready);
@@ -474,11 +482,13 @@ function updateSequencerControls() {
   document.getElementById("appendSequenceCall").disabled = locked || sequence.steps.length >= 32;
   document.getElementById("appendSequenceColor").disabled = locked || sequence.steps.length >= 32;
   document.getElementById("appendSequenceDelay").disabled = locked || sequence.steps.length >= 32;
+  const aiButton = document.getElementById("appendSequenceAI");
+  if (aiButton) aiButton.disabled = locked || sequence.steps.length >= 32;
   stepDurationInput.disabled = locked;
   sequenceFinishButton.disabled = locked;
   playbackRateInput.disabled = locked;
   sequencerSteps.querySelectorAll("input, select, button").forEach(element => {
-    if (element.id === "appendSequenceStep" || element.id === "appendSequenceCall" || element.id === "appendSequenceColor" || element.id === "appendSequenceDelay") return;
+    if (element.id === "appendSequenceStep" || element.id === "appendSequenceCall" || element.id === "appendSequenceColor" || element.id === "appendSequenceDelay" || element.id === "appendSequenceAI") return;
     element.disabled = locked || element.dataset.sequenceCall === "true" || (element.classList.contains("move-step-up-button") && element.dataset.stepIndex === "0");
   });
 }
@@ -546,7 +556,25 @@ function renderSequence() {
       };
       saveSequenceChange(updated);
     });
-    if (step.type === "delay") {
+    if (step.type === "ai") {
+      row.classList.add("sequence-ai-step-row");
+      select.textContent = (index + 1) + " AI";
+      select.title = "Run frozen policy until the episode ends";
+      const target = makeElement("select", "sequence-step-policy");target.setAttribute("aria-label", "Step " + (index + 1) + " AI policy");
+      const choices = sequencePolicies.some(policy => policy.id === step.policy) ? sequencePolicies : [{ id: step.policy, name: (step.policy.startsWith("file:") ? step.policy.slice(5) : "Imported policy") + " (not available here)" }, ...sequencePolicies];
+      for (const policy of choices) { const option = makeElement("option", "", policy.name);option.value = policy.id;target.append(option); }
+      const imported = makeElement("option", "", "Import policy JSON...");imported.value = "__import__";target.append(imported);target.value = step.policy;
+      target.addEventListener("change", async () => {
+        const original = sequence, slot = selectedSequenceSlot;let policy = target.value;
+        try {
+          if (policy === "__import__") { policy = await GhostSequenceAI.chooseFile();await refreshSequencePolicies(); }
+          if (sequence !== original || selectedSequenceSlot !== slot || sequencePlaying) return;
+          if (policy) await saveSequenceChange({ ...sequence, steps: sequence.steps.map((saved, i) => i === index ? { type: "ai", policy } : saved) });
+          else renderSequence();
+        } catch (error) { setText("sequencerError", error.message);renderSequence(); }
+      });
+      row.append(target);
+    } else if (step.type === "delay") {
       select.textContent = (index + 1) + " \u23f1";
       select.disabled = true;
       select.dataset.sequenceCall = "true";
@@ -650,7 +678,7 @@ function captureSequenceStep(durationMs) {
 
 async function applySequenceStep(step, useStartupMotion = false, playbackRate = 1) {
   const componentRun = typeof sequenceRunId === "undefined" ? null : sequenceRunId;
-  if (step.type === "delay") return;
+  if (["delay", "ai"].includes(step.type)) return;
   if (step.type === "color") {
     if (!offlineSimulation) {
       const response = await fetch("/api/led", {
@@ -691,6 +719,7 @@ async function applySequenceStep(step, useStartupMotion = false, playbackRate = 
 }
 
 async function selectSequenceStep(index) {
+  if (sequence.steps[index]?.type === "ai") { await playSequence(index); return; }
   if (["sequence", "delay"].includes(sequence.steps[index]?.type)) return;
   if (sequencePlaying || sequenceSaving || sequenceApplying) return;
   if (selectedSequenceStepIndex === index) {
@@ -815,7 +844,8 @@ async function readSequence(slot) {
   if (typeof componentRegistry !== "undefined" && Array.isArray(saved.steps)) saved.steps.forEach(step => componentRegistry.validateSequenceStates(step?.componentStates));
   if (typeof saved.loop !== "boolean" || (saved.finish !== undefined && typeof saved.finish !== "boolean") || !Array.isArray(saved.steps) ||
     saved.steps.length > 32 ||
-    saved.steps.some(step => step?.type === "delay" ?
+    saved.steps.some(step => step?.type === "ai" ?
+      typeof step.policy !== "string" || !/^[A-Za-z0-9][A-Za-z0-9 _.:\-]{0,119}$/.test(step.policy) : step?.type === "delay" ?
       !Number.isInteger(step.durationMs) || step.durationMs < 1 || step.durationMs > 60000 : step?.type === "color" ?
       !Array.isArray(step.rgb) || step.rgb.length !== 3 || step.rgb.some(value => !Number.isInteger(value) || value < 0 || value > 255) ||
       !Number.isInteger(step.durationMs) || step.durationMs < 100 || step.durationMs > 60000 : step?.type === "sequence" ? !/^[a-j]$/.test(step.slot) :
@@ -833,7 +863,7 @@ async function readSequence(slot) {
   return {
     ...saved,
     finish: saved.finish !== false,
-    steps: saved.steps.map(step => ["sequence", "color", "delay"].includes(step.type) ? step : ({
+    steps: saved.steps.map(step => ["sequence", "color", "delay", "ai"].includes(step.type) ? step : ({
       ...step,
       servoStates: step.servoStates || servoControls.map(encodeServoState)
     }))
@@ -845,6 +875,7 @@ async function loadSequence() {
   sequenceLoaded = true;
   renderSequence();
   void refreshSequenceSlotIndicators();
+  if (globalThis.GhostSequenceAI) void refreshSequencePolicies();
   setText("sequencerStatus", sequence.steps.length + " step(s) loaded from " + (currentRobotName ? "robots/" + currentRobotName + "/" : "") + sequenceFilename());
 }
 
@@ -904,7 +935,8 @@ function sequenceStepWaitMilliseconds(step, playbackRate, motionEnds, finish = s
   return Math.max(16, step.durationMs / playbackRate, remaining, continuousDuration);
 }
 
-async function playSequence() {
+async function playSequence(singleIndex = null) {
+  if (singleIndex !== null && (!Number.isInteger(singleIndex) || sequence.steps[singleIndex]?.type !== "ai" || sequenceSaving || sequenceLoading || sequenceApplying || !sequenceLoaded)) return;
   if (controllerRebooting || sequencePlaying || sweepRunning || sequence.steps.length === 0) return;
   const playbackRate = Number(playbackRateInput.value);
   if (!Number.isFinite(playbackRate) || playbackRate < 0.001 || playbackRate > 10) {
@@ -928,7 +960,7 @@ async function playSequence() {
     // Cache at most the ten sequence slots; never expand calls into a step list.
     const rootSlot = selectedSequenceSlot;
     const cache = new Map([[rootSlot, sequence]]);
-    for (const [, saved] of cache) {
+    if (singleIndex === null) for (const [, saved] of cache) {
       for (const step of saved.steps) {
         if (runId !== sequenceRunId) return;
         if (step.type !== "sequence" || cache.has(step.slot)) continue;
@@ -941,7 +973,7 @@ async function playSequence() {
       throw new Error("Sequence chain has no motion steps.");
     }
     const hasCalls = sequence.steps.some(step => step.type === "sequence");
-    const frames = [{ sequence, slot: rootSlot, index: 0 }];
+    const frames = [{ sequence, slot: rootSlot, index: singleIndex ?? 0 }];
     while (runId === sequenceRunId && frames.length) {
       const frame = frames[frames.length - 1];
       const saved = frame.sequence;
@@ -971,6 +1003,29 @@ async function playSequence() {
       renderSequence();
       setText("sequencerStatus", "Playing " + frame.slot.toUpperCase() + " step " +
         (frame.index + 1) + " of " + saved.steps.length);
+      if (step.type === "ai") {
+        let joints = null;
+        const offline = offlineSimulation, revision = commandModeRevision;
+        await GhostSequenceAI.run(step.policy, {
+          nodes: servoPreview.nodes, configuration: servoPreview.configuration, registry: componentRegistry, worldPoint: servoWorldPoint, offline,
+          isCurrent: () => runId === sequenceRunId && sequencePlaying && offlineSimulation === offline && commandModeRevision === revision && !controllerRebooting,
+          bindJoints: selected => { joints = selected.map(joint => servoControls.find(control => control.name === joint.name)); },
+          canMove: () => !joints || joints.every(control => control?.ready && control.outputEnabled && isEligible(control)),
+          initialAngles: () => joints.map(control => Number(control.slider.value)),
+          command: async angles => {
+            if (runId !== sequenceRunId || offlineSimulation !== offline || revision !== commandModeRevision) return;
+            if (!joints.every(control => control?.ready && control.outputEnabled && isEligible(control))) throw new Error("AI joints were muted or powered off.");
+            await requestServoBatch(joints.map((control, i) => ({ control, command: { angle: String(Math.round(clampServoCommand(control, angles[i]))), enabled: "1", motionMode: offline ? "immediate" : control.linearMode ? "linear" : control.smoothMode ? "smooth" : "immediate", speed: control.motionSpeed, durationMs: 50 } })));
+            if (runId !== sequenceRunId) return;
+            joints.forEach((control, i) => { control.slider.value = Math.round(clampServoCommand(control, angles[i]));setText("angle" + control.channel, servoCommandText(control, Number(control.slider.value))); });
+          },
+          snapshot: snapshot => globalThis.GhostLearningView?.show({ ...snapshot, mode: "policy-test", policyRunning: true }),
+          status: text => { if (runId === sequenceRunId) setText("sequencerStatus", text); }
+        });
+        if (runId !== sequenceRunId) break;
+        if (singleIndex !== null) break;
+        startup = false;frame.index += 1;continue;
+      }
       // The initial smooth move is step 1, not a separate pre-roll and hold.
       await applySequenceStep(step, startup, playbackRate);
       if (step.type !== "color" && step.type !== "delay") startup = false;
@@ -1010,6 +1065,7 @@ async function playSequence() {
 }
 
 function stopSequence() {
+  globalThis.GhostSequenceAI?.stop();
   if (typeof componentPanels !== "undefined") componentPanels.stopSequence();
   if (!sequencePlaying) return;
   sequenceRunId += 1;
@@ -1039,6 +1095,17 @@ document.getElementById("appendSequenceCall").addEventListener("click", () => {
   const nextSlot = slots[(slots.indexOf(selectedSequenceSlot) + 1) % slots.length];
   saveSequenceChange({ ...sequence, steps: [...sequence.steps, { type: "sequence", slot: nextSlot }] });
 });
+document.getElementById("appendSequenceAI").addEventListener("click", async () => {
+  if (sequencePlaying || sequenceSaving || sequenceLoading || sequenceApplying || controllerRebooting || !sequenceLoaded || sequence.steps.length >= 32) return;
+  const original = sequence, slot = selectedSequenceSlot;
+  try {
+    const policies = await refreshSequencePolicies();let policy = policies[0]?.id;
+    if (!policy) { policy = await GhostSequenceAI.chooseFile();await refreshSequencePolicies(); }
+    if (!policy || sequence !== original || selectedSequenceSlot !== slot || sequencePlaying || sequenceSaving || sequenceLoading || sequenceApplying || controllerRebooting) return;
+    await saveSequenceChange({ ...sequence, steps: [...sequence.steps, { type: "ai", policy }] });
+  } catch (error) { setText("sequencerError", error.message); }
+});
+
 document.getElementById("appendSequenceDelay").addEventListener("click", () => {
   if (sequencePlaying || sequenceSaving || sequenceLoading || sequenceApplying || controllerRebooting || !sequenceLoaded || sequence.steps.length >= 32) return;
   saveSequenceChange({ ...sequence, steps: [...sequence.steps, { type: "delay", durationMs: 1000 }] });
@@ -1049,7 +1116,7 @@ document.getElementById("appendSequenceColor").addEventListener("click", () => {
   saveSequenceChange({ ...sequence, steps: [...sequence.steps, { type: "color", rgb: [0, 0, 255], durationMs: 100 }] });
 });
 writeStepButton.addEventListener("click", writeSequenceStep);
-playSequenceButton.addEventListener("click", playSequence);
+playSequenceButton.addEventListener("click", () => playSequence());
 stopSequenceButton.addEventListener("click", stopSequence);
 let clearSequenceDialogOpen = false;
 clearSequenceButton.addEventListener("click", async () => {

@@ -9,7 +9,9 @@
   function random(seed){let state=seed>>>0;return()=>{state=(Math.imul(state,1664525)+1013904223)>>>0;return state/4294967296;};}
   function makeCase({stageId,split,index,nodes,task,registry,worldPoint,seedOverride}){
     const stage=stages.find(item=>item.id===stageId);
-    if(!stage||!seeds[split]||!Number.isInteger(index)||index<0||index>=seeds[split].length)throw new Error('Unknown curriculum stage, split or case index.');
+    if(!stage)throw new Error('Unknown curriculum stage '+JSON.stringify(stageId)+'. Select a configured-target or random-target stage.');
+    if(!Object.prototype.hasOwnProperty.call(seeds,split))throw new Error('Unknown curriculum seed split '+JSON.stringify(split)+'.');
+    if(!Number.isInteger(index)||index<0||index>=seeds[split].length)throw new Error('Curriculum case index '+JSON.stringify(index)+' is outside 0..'+(seeds[split].length-1)+' for '+split+'.');
     const seed=seedOverride??seeds[split][index];
     if(!Number.isSafeInteger(seed)||seed<0||seed>0xffffffff)throw new Error("Invalid curriculum seed.");
     const copy=JSON.parse(JSON.stringify(nodes)),episodeTask=JSON.parse(JSON.stringify(task));

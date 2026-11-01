@@ -24,8 +24,16 @@
     };
     try{return stable(hardware(left))===stable(hardware(right));}catch{return false;}
   }
-  function save({agent,context,training={},evaluation=null}){
-    return {format:'ghost-ppo-policy',version:1,tensorflowVersion:'4.22.0',savedAt:new Date().toISOString(),compatibility:context,
+  function save({agent,context,training={},evaluation=null,convergence=null}){
+    const state=convergence??evaluation?.convergence,last=state?.rows?.at(-1),summary={
+      status:state?.status??'Not measured',successPercent:Number.isFinite(state?.rate)?Math.round(state.rate*10000)/100:null,
+      converged:state?.converged===true,finalQualified:state?.converged===true&&evaluation?.qualified===true,
+      successes:last?.summary?.successes??null,cases:last?.summary?.n??null,
+      confidenceInterval:last?.summary?.interval??null,evaluatedAt:last?.at??null,
+      evaluatedUpdates:last?.updates??null,completedUpdates:training.completedUpdates??0,
+      note:'Held-out monitoring acquisition rate, not probability of convergence. Stale or restored evidence is not current validation.'
+    };
+    return {format:'ghost-ppo-policy',version:1,tensorflowVersion:'4.22.0',savedAt:new Date().toISOString(),summary,compatibility:context,
       network:{schema:agent.schema,settings:agent.settings,weights:agent.exportWeights()},training,evaluation,
       continuation:'Weights only: Adam optimizer, random generator and rollout state restart on load.'};
   }
